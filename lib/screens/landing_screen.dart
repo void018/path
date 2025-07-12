@@ -11,24 +11,20 @@ class _LandingScreenState extends State<LandingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Landing Screen'),
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text(
-              'Welcome to the Landing Screen!',
+      body: Column(
+        children: [
+          Container(child: Text('Welcome to PATH')),
+          Expanded(
+              child: Text(
+            'The perfect companion for your public transportation trips!',
+            style: TextStyle(
+              fontSize: 18,
+              fontFamily: 'inter',
+              fontWeight: FontWeight.w400,
             ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pushNamed(context, '/home');
-              },
-              child: const Text('Go to Home Screen'),
-            ),
-          ],
-        ),
+          )),
+          ElevatedButton(onPressed: () {}, child: const Text('Get Started')),
+        ],
       ),
     );
   }
