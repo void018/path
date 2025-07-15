@@ -32,7 +32,7 @@ Title text
                   color: Color.fromARGB(255, 0, 59, 115),
                   fontSize: 32,
                   fontFamily: 'inter',
-                  fontWeight: FontWeight.w500,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),
@@ -49,7 +49,7 @@ Subtitle text
             child: Padding(
               padding: EdgeInsets.fromLTRB(10, 0, 0, 10),
               child: Text(
-                'The perfect companion for your public transportation trips!',
+                'We need your credentials to maximize your experience.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: Color.fromARGB(255, 0, 59, 115),
@@ -67,22 +67,48 @@ Email text field
 
 
 */
-
-          Container(
-            child: Center(
-              child: TextField(
-                decoration: InputDecoration(
-                  suffixIcon: Icon(Icons.person),
-                  labelText: 'email address',
-                  hintStyle: TextStyle(color: Colors.black.withOpacity(0.5)),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(
-                      width: 1,
-                      color: Colors.black54,
+          SizedBox(height: 10),
+          Padding(
+            padding:
+                const EdgeInsets.fromLTRB(30, 0, 30, 0), // Match button padding
+            child: SizedBox(
+              width: double.infinity,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Email',
+                    style: TextStyle(
+                      color: Color.fromARGB(255, 0, 59, 115),
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                ),
+                  Container(
+                    decoration: BoxDecoration(
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.25),
+                          spreadRadius: 0,
+                          blurRadius: 4,
+                          offset: Offset(0, 4),
+                        ),
+                      ],
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: TextField(
+                      decoration: InputDecoration(
+                        filled: true,
+                        fillColor: Colors.white,
+                        suffixIcon: Icon(Icons.person),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -95,26 +121,47 @@ password text field
 */
 
           SizedBox(height: 10),
-          //
-          //password TextField
-
-          Container(
-            child: Center(
-              child: TextField(
-                obscureText: true,
-                decoration: InputDecoration(
-                  suffixIcon: Icon(Icons.lock),
-                  labelText: 'password',
-                  hintStyle: TextStyle(color: Colors.black.withOpacity(0.5)),
-                  border: OutlineInputBorder(
+          Padding(
+            padding: const EdgeInsets.fromLTRB(30, 0, 30, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Password',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: Color.fromARGB(255, 0, 59, 115),
+                  ),
+                ),
+                Container(
+                  decoration: BoxDecoration(
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.25),
+                        spreadRadius: 0,
+                        blurRadius: 4,
+                        offset: Offset(0, 4),
+                      ),
+                    ],
                     borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(
-                      width: 1,
-                      color: Colors.black54,
+                  ),
+                  child: Center(
+                    child: TextField(
+                      obscureText: true,
+                      decoration: InputDecoration(
+                        filled: true,
+                        fillColor: Colors.white,
+                        suffixIcon: Icon(Icons.lock),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ),
+              ],
             ),
           ),
 /*
@@ -152,7 +199,7 @@ Button with dropshadow
                   ),
                   onPressed: () {},
                   child: const Text(
-                    'Get Started',
+                    'Login',
                     style: TextStyle(
                       color: Color.fromARGB(255, 0, 59, 115),
                       fontSize: 18,
