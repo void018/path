@@ -167,13 +167,37 @@ password text field
 /*
 
 
+forget password text
+
+
+*/
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 10, 20, 0),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: () {},
+                child: Text(
+                  'Forgot Password?',
+                  style: TextStyle(
+                    color: Color.fromARGB(255, 0, 59, 115),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+              ),
+            ),
+          ),
+/*
+
+
 Button with dropshadow
 
 
 */
           Padding(
             padding: const EdgeInsets.fromLTRB(
-                30, 100, 30, 0), // Reduce horizontal padding
+                30, 160, 30, 0), // Reduce horizontal padding
             child: SizedBox(
               width: double.infinity, // Stretch to fill available width
               height: 71,
