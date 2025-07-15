@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:void_path/custom_widgets/openstreetmap_screen.dart';
+import 'package:public_transportation/custom_widgets/openstreetmap_screen.dart';
 
 void main() {
   runApp(const MyApp());
