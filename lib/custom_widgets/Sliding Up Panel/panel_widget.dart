@@ -6,9 +6,11 @@ import 'package:sliding_up_panel/sliding_up_panel.dart';
 
 class PanelWidget extends StatelessWidget {
   final ScrollController controller;
+  final PanelController panelController;
   const PanelWidget({
     Key? key,
     required this.controller,
+    required this.panelController,
   }) : super(key: key);
 
   @override
@@ -18,11 +20,41 @@ class PanelWidget extends StatelessWidget {
       controller: controller,
       children: [
         SizedBox(height: 12),
-        buildDragHandle(),
-        SizedBox(height: 18),
-        Center(),
-        SizedBox(
-          height: 24,
+        buildDragHandle(panelController),
+        Padding(
+          padding: EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Where to?',
+                style: TextStyle(fontSize: 26, fontWeight: FontWeight.w500),
+              ),
+              TextField(
+                decoration: InputDecoration(
+                  filled: true,
+                  fillColor: Colors.white,
+                  suffixIcon: Icon(Icons.search),
+                  hintText: 'Search for a destination',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide:
+                        BorderSide(color: Color.fromARGB(255, 0, 59, 115)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide:
+                        BorderSide(color: Color.fromARGB(255, 0, 59, 115)),
+                  ),
+                  contentPadding:
+                      EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     );

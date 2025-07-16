@@ -11,27 +11,55 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  final PanelController _panelController = PanelController();
+  void _navigateBottomBar(int index) {
+    setState(() {
+      _selectedindex = index;
+    });
+  }
+
+  int _selectedindex = 0;
   @override
   Widget build(BuildContext context) {
     final double PanelHeightClosed = MediaQuery.of(context).size.height * 0.25;
     final double PanelHeightOpen = MediaQuery.of(context).size.height * 1.0;
     return Scaffold(
+      bottomNavigationBar: BottomNavigationBar(
+        onTap: _navigateBottomBar,
+        currentIndex: _selectedindex,
+        type: BottomNavigationBarType.fixed,
+        items: [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.home),
+            label: 'Home',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.search),
+            label: 'Search',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.settings),
+            label: 'Settings',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.settings),
+            label: 'Settings',
+          ),
+        ],
+      ),
       body: Stack(
         children: [
-          SlidingUpPanel(
-            minHeight: PanelHeightClosed,
-            maxHeight: PanelHeightOpen,
-            parallaxEnabled: true,
-            parallaxOffset: 0.5,
-            body: OpenstreetmapScreen(),
-            panelBuilder: (controller) => PanelWidget(
-              controller: controller,
-            ),
-            borderRadius: BorderRadius.vertical(
-              top: Radius.circular(20),
-            ),
-            color: Color.fromARGB(255, 229, 243, 255),
-          ),
+          OpenstreetmapScreen(),
+          /*
+
+
+
+          Floating Icons
+
+
+
+
+          */
           Column(
             children: [
               Row(
@@ -67,6 +95,30 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
             ],
+          ),
+          /*
+
+
+
+          Sliding Up Panel
+          
+
+
+          */
+          SlidingUpPanel(
+            controller: _panelController,
+            minHeight: PanelHeightClosed,
+            maxHeight: PanelHeightOpen,
+            parallaxEnabled: true,
+            parallaxOffset: 0.5,
+            panelBuilder: (controller) => PanelWidget(
+              panelController: _panelController,
+              controller: controller,
+            ),
+            borderRadius: BorderRadius.vertical(
+              top: Radius.circular(20),
+            ),
+            color: Color.fromARGB(255, 229, 243, 255),
           ),
         ],
       ),
