@@ -180,13 +180,6 @@ class _OpenstreetmapScreenState extends State<OpenstreetmapScreen>
                     ])
                 ],
               ),
-/*
-
-                 end of map code 
-
-
-
-*/
       ]),
     );
   }

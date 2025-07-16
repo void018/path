@@ -16,47 +16,74 @@ class PanelWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: EdgeInsets.zero,
-      controller: controller,
-      children: [
-        SizedBox(height: 12),
-        buildDragHandle(panelController),
-        Padding(
-          padding: EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Where to?',
-                style: TextStyle(fontSize: 26, fontWeight: FontWeight.w500),
-              ),
-              TextField(
-                decoration: InputDecoration(
-                  filled: true,
-                  fillColor: Colors.white,
-                  suffixIcon: Icon(Icons.search),
-                  hintText: 'Search for a destination',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide:
-                        BorderSide(color: Color.fromARGB(255, 0, 59, 115)),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide:
-                        BorderSide(color: Color.fromARGB(255, 0, 59, 115)),
-                  ),
-                  contentPadding:
-                      EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: EdgeInsets.zero,
+        controller: controller,
+        children: [
+          SizedBox(height: 12),
+          buildDragHandle(panelController),
+          Padding(
+            padding: EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Where to?',
+                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.w500),
                 ),
-              ),
-            ],
+                /*
+
+
+              Search bar for destination input 
+
+
+
+              */
+                TextField(
+                  decoration: InputDecoration(
+                    filled: true,
+                    fillColor: Colors.white,
+                    suffixIcon: Icon(Icons.search),
+                    hintText: 'Search for a destination',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide:
+                          BorderSide(color: Color.fromARGB(255, 0, 59, 115)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide:
+                          BorderSide(color: Color.fromARGB(255, 0, 59, 115)),
+                    ),
+                    contentPadding:
+                        EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  ),
+                ),
+                /*
+
+
+
+              */
+                Container(
+                  height: 30,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    children: [
+                      Padding(
+                        padding: EdgeInsets.only(right: 8, top: 8),
+                        child: ElevatedButton(
+                          onPressed: () {},
+                          child: Text('All'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-      ],
-    );
+        ]);
   }
 }
