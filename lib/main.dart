@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:public_transportation/custom_widgets/openstreetmap_screen.dart';
+import 'package:public_transportation/screens/home_screen.dart';
 import 'package:public_transportation/screens/landing_screen.dart';
 import 'package:public_transportation/screens/sign_in_screen.dart';
 
@@ -12,7 +13,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      home: SignInScreen(),
+      home: HomeScreen(),
     );
   }
 }

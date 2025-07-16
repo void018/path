@@ -132,98 +132,62 @@ class _OpenstreetmapScreenState extends State<OpenstreetmapScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text("Moasalat")),
-      body: Stack(
-        children: [
-          isLoading
-              ? Center(child: CircularProgressIndicator())
-              : FlutterMap(
-                  mapController: _mapController,
-                  options: MapOptions(
-                    initialCenter: _currentLocation ?? const LatLng(0, 0),
-                    initialZoom: 2,
-                    minZoom: 0,
-                    maxZoom: 100,
-                  ),
-                  children: [
-                    TileLayer(
-                      urlTemplate:
-                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                      userAgentPackageName:
-                          'net.tlserver6y.flutter_map_location_marker.example',
-                      maxZoom: 19,
-                    ),
-                    CurrentLocationLayer(
-                      style: const LocationMarkerStyle(
-                        marker: DefaultLocationMarker(
-                          child: Icon(Icons.location_pin),
-                        ),
-                        markerSize: Size(35, 35),
-                      ),
-                    ),
-                    if (_destination != null)
-                      MarkerLayer(markers: [
-                        Marker(
-                            width: 50,
-                            height: 50,
-                            point: _destination!,
-                            child: const Icon(
-                              size: 40,
-                              Icons.location_pin,
-                              color: Colors.red,
-                            )),
-                      ]),
-                    if (_currentLocation != null &&
-                        _destination != null &&
-                        _route.isNotEmpty)
-                      PolylineLayer(polylines: [
-                        Polyline(
-                            points: _route, strokeWidth: 5, color: Colors.red)
-                      ])
-                  ],
+      body: Stack(children: [
+        isLoading
+            ? Center(child: CircularProgressIndicator())
+            : FlutterMap(
+                mapController: _mapController,
+                options: MapOptions(
+                  initialCenter: _currentLocation ?? const LatLng(0, 0),
+                  initialZoom: 2,
+                  minZoom: 0,
+                  maxZoom: 100,
                 ),
-          Positioned(
-              child: Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Row(
-              spacing: 8,
-              children: [
-                Expanded(
-                    flex: 7,
-                    child: TextField(
-                      controller: _locationController,
-                      decoration: InputDecoration(
-                          filled: true,
-                          fillColor: Colors.white,
-                          hintText: "Search a location by name..",
-                          contentPadding: EdgeInsets.symmetric(horizontal: 20),
-                          border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(30),
-                              borderSide: BorderSide.none)),
-                    )),
-                Expanded(
-                  child: IconButton(
-                      onPressed: () {
-                        final location = _locationController.text.trim();
-                        if (location.isNotEmpty) {
-                          _fetchCoordinatesPoint(location);
-                        }
-                      },
-                      icon: Icon(Icons.search),
-                      style: IconButton.styleFrom(
-                          iconSize: 30, backgroundColor: Colors.white70)),
-                )
-              ],
-            ),
-          ))
-        ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          _userCurrentLocation();
-        },
-        child: const Icon(Icons.my_location, size: 35),
-      ),
+                children: [
+                  TileLayer(
+                    urlTemplate:
+                        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    userAgentPackageName:
+                        'net.tlserver6y.flutter_map_location_marker.example',
+                    maxZoom: 19,
+                  ),
+                  CurrentLocationLayer(
+                    style: const LocationMarkerStyle(
+                      marker: DefaultLocationMarker(
+                        child: Icon(Icons.location_pin),
+                      ),
+                      markerSize: Size(35, 35),
+                    ),
+                  ),
+                  if (_destination != null)
+                    MarkerLayer(markers: [
+                      Marker(
+                          width: 50,
+                          height: 50,
+                          point: _destination!,
+                          child: const Icon(
+                            size: 40,
+                            Icons.location_pin,
+                            color: Colors.red,
+                          )),
+                    ]),
+                  if (_currentLocation != null &&
+                      _destination != null &&
+                      _route.isNotEmpty)
+                    PolylineLayer(polylines: [
+                      Polyline(
+                          points: _route, strokeWidth: 5, color: Colors.red)
+                    ])
+                ],
+              ),
+/*
+
+                 end of map code 
+
+
+
+*/
+      ]),
     );
   }
 }
