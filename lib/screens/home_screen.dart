@@ -1,8 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:public_transportation/Navgation%20Bar/home_nav.dart';
-import 'package:public_transportation/custom_widgets/openstreetmap_screen.dart';
-import 'package:sliding_up_panel/sliding_up_panel.dart';
-import 'package:public_transportation/custom_widgets/Sliding%20Up%20Panel/panel_widget.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
