@@ -15,7 +15,7 @@ class _HomeNavState extends State<HomeNav> {
 
   @override
   Widget build(BuildContext context) {
-    final double PanelHeightClosed = MediaQuery.of(context).size.height * 0.25;
+    final double PanelHeightClosed = MediaQuery.of(context).size.height * 0.22;
     final double PanelHeightOpen = MediaQuery.of(context).size.height * 1.0;
     return Scaffold(
       body: Stack(

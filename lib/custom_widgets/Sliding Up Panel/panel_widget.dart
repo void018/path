@@ -26,9 +26,12 @@ class PanelWidget extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Where to?',
-                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.w500),
+                Container(
+                  padding: EdgeInsets.fromLTRB(0, 0, 0, 13),
+                  child: Text(
+                    'Where to?',
+                    style: TextStyle(fontSize: 26, fontWeight: FontWeight.w500),
+                  ),
                 ),
                 /*
 
