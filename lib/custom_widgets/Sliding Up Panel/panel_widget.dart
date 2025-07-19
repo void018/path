@@ -133,16 +133,10 @@ class _PanelWidgetState extends State<PanelWidget> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    SizedBox(
-                      height:
-                          1000, // Set the height you want for the previous routes list
-                      child: ListView.builder(
-                        itemCount: widget.routes.length,
-                        itemBuilder: (context, index) {
-                          return RouteTile(routeName: widget.routes[index]);
-                        },
-                      ),
-                    ),
+                    // Remove SizedBox with ListView.builder
+                    ...widget.routes
+                        .map((route) => RouteTile(routeName: route))
+                        .toList(),
                   ],
                 ),
               ],

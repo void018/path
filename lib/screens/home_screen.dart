@@ -29,22 +29,22 @@ class _HomeScreenState extends State<HomeScreen> {
         onTap: _navigateBottomBar,
         currentIndex: _selectedindex,
         type: BottomNavigationBarType.fixed,
+        selectedItemColor:
+            Color.fromARGB(255, 255, 167, 38), // <-- Focused icon color
+        unselectedItemColor:
+            Colors.grey, // Optional: to differentiate unfocused icons
         items: [
           BottomNavigationBarItem(
             icon: Icon(Icons.home),
             label: 'Home',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.search),
-            label: 'Search',
+            icon: Icon(Icons.favorite),
+            label: 'Favorites',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.settings),
-            label: 'Settings',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.settings),
-            label: 'Settings',
+            icon: Icon(Icons.route),
+            label: 'Routes',
           ),
         ],
       ),

@@ -19,7 +19,8 @@ class FilterButton extends StatelessWidget {
         height: 30,
         padding: EdgeInsets.symmetric(horizontal: 25, vertical: 5),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.orange : Colors.grey[300],
+          color:
+              isSelected ? Color.fromARGB(255, 255, 167, 38) : Colors.grey[300],
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
