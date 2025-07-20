@@ -32,7 +32,7 @@ class RouteSelectionScreen extends StatelessWidget {
               const SizedBox(height: 20),
               const Text(
                 'Routes',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                style: TextStyle(fontSize: 26, fontWeight: FontWeight.w500),
               ),
               const SizedBox(height: 10),
               Expanded(child: _buildRouteList()),
