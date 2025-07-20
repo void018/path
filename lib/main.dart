@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:public_transportation/screens/home_screen.dart';
+import 'package:public_transportation/screens/navigation_screen.dart';
 import 'package:public_transportation/screens/set_destination_screen.dart';
 import 'package:public_transportation/screens/set_destination_screen.dart';
 
@@ -12,7 +13,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      home: routeselectionscreen(),
+      home: NavigationScreen(),
     );
   }
 }
