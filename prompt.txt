@@ -1,0 +1,909 @@
+// widgets/route_search_widget.dart
+import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart';
+import '../models/public_transport_route.dart';
+import '../services/public_transport_service.dart';
+
+class RouteSearchWidget extends StatefulWidget {
+  final Function(PublicTransportRoute) onRouteFound;
+  final Function(String) onError;
+  final LatLng? currentLocation;
+
+  const RouteSearchWidget({
+    super.key,
+    required this.onRouteFound,
+    required this.onError,
+    this.currentLocation,
+  });
+
+  @override
+  State<RouteSearchWidget> createState() => _RouteSearchWidgetState();
+}
+
+class _RouteSearchWidgetState extends State<RouteSearchWidget> {
+  final TextEditingController _fromController = TextEditingController();
+  final TextEditingController _toController = TextEditingController();
+  final PublicTransportService _service = PublicTransportService();
+  
+  DateTime _selectedDateTime = DateTime.now();
+  bool _isLoading = false;
+  bool _useCurrentLocation = true;
+  
+  List<LatLng> _fromSuggestions = [];
+  List<LatLng> _toSuggestions = [];
+  bool _showFromSuggestions = false;
+  bool _showToSuggestions = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.currentLocation != null) {
+      _setCurrentLocationAsFrom();
+    }
+  }
+
+  void _setCurrentLocationAsFrom() async {
+    if (widget.currentLocation != null) {
+      final address = await _service.reverseGeocode(widget.currentLocation!);
+      _fromController.text = address;
+      setState(() {
+        _useCurrentLocation = true;
+      });
+    }
+  }
+
+  Future<void> _searchFromLocations(String query) async {
+    if (query.length < 3) return;
+    
+    final suggestions = await _service.geocodeLocation(query);
+    setState(() {
+      _fromSuggestions = suggestions;
+      _showFromSuggestions = suggestions.isNotEmpty;
+    });
+  }
+
+  Future<void> _searchToLocations(String query) async {
+    if (query.length < 3) return;
+    
+    final suggestions = await _service.geocodeLocation(query);
+    setState(() {
+      _toSuggestions = suggestions;
+      _showToSuggestions = suggestions.isNotEmpty;
+    });
+  }
+
+  Future<void> _searchRoute() async {
+    if (_fromController.text.isEmpty || _toController.text.isEmpty) {
+      widget.onError('Please fill in both origin and destination');
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      LatLng? origin;
+      LatLng? destination;
+
+      // Get origin coordinates
+      if (_useCurrentLocation && widget.currentLocation != null) {
+        origin = widget.currentLocation;
+      } else {
+        final fromLocations = await _service.geocodeLocation(_fromController.text);
+        if (fromLocations.isEmpty) {
+          widget.onError('Origin location not found');
+          return;
+        }
+        origin = fromLocations.first;
+      }
+
+      // Get destination coordinates
+      final toLocations = await _service.geocodeLocation(_toController.text);
+      if (toLocations.isEmpty) {
+        widget.onError('Destination location not found');
+        return;
+      }
+      destination = toLocations.first;
+
+      // Search for route
+      final route = await _service.getRoute(
+        origin: origin!,
+        destination: destination,
+        departureTime: _selectedDateTime,
+      );
+
+      if (route != null) {
+        widget.onRouteFound(route);
+      } else {
+        widget.onError('No route found');
+      }
+    } catch (e) {
+      widget.onError('Error searching route: ${e.toString()}');
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _selectDateTime() async {
+    final date = await showDatePicker(
+      context: context,
+      initialDate: _selectedDateTime,
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 30)),
+    );
+
+    if (date != null) {
+      final time = await showTimePicker(
+        context: context,
+        initialTime: TimeOfDay.fromDateTime(_selectedDateTime),
+      );
+
+      if (time != null) {
+        setState(() {
+          _selectedDateTime = DateTime(
+            date.year,
+            date.month,
+            date.day,
+            time.hour,
+            time.minute,
+          );
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.all(16),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // From field
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.my_location, color: Colors.green),
+                    const SizedBox(width: 8),
+                    const Text('From', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const Spacer(),
+                    if (widget.currentLocation != null)
+                      TextButton.icon(
+                        onPressed: () {
+                          setState(() {
+                            _useCurrentLocation = !_useCurrentLocation;
+                          });
+                          if (_useCurrentLocation) {
+                            _setCurrentLocationAsFrom();
+                          } else {
+                            _fromController.clear();
+                          }
+                        },
+                        icon: Icon(_useCurrentLocation ? Icons.check_box : Icons.check_box_outline_blank),
+                        label: const Text('Current'),
+                      ),
+                  ],
+                ),
+                TextField(
+                  controller: _fromController,
+                  enabled: !_useCurrentLocation,
+                  decoration: const InputDecoration(
+                    hintText: 'Enter starting location',
+                    border: OutlineInputBorder(),
+                  ),
+                  onChanged: _searchFromLocations,
+                  onTap: () => setState(() => _showFromSuggestions = true),
+                ),
+                if (_showFromSuggestions && _fromSuggestions.isNotEmpty)
+                  Container(
+                    height: 150,
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: ListView.builder(
+                      itemCount: _fromSuggestions.length,
+                      itemBuilder: (context, index) {
+                        return ListTile(
+                          title: Text(_fromSuggestions[index].toString()),
+                          onTap: () {
+                            _fromController.text = _fromSuggestions[index].toString();
+                            setState(() {
+                              _showFromSuggestions = false;
+                              _useCurrentLocation = false;
+                            });
+                          },
+                        );
+                      },
+                    ),
+                  ),
+              ],
+            ),
+            
+            const SizedBox(height: 16),
+            
+            // To field
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.location_on, color: Colors.red),
+                    SizedBox(width: 8),
+                    Text('To', style: TextStyle(fontWeight: FontWeight.bold)),
+                  ],
+                ),
+                TextField(
+                  controller: _toController,
+                  decoration: const InputDecoration(
+                    hintText: 'Enter destination',
+                    border: OutlineInputBorder(),
+                  ),
+                  onChanged: _searchToLocations,
+                  onTap: () => setState(() => _showToSuggestions = true),
+                ),
+                if (_showToSuggestions && _toSuggestions.isNotEmpty)
+                  Container(
+                    height: 150,
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: ListView.builder(
+                      itemCount: _toSuggestions.length,
+                      itemBuilder: (context, index) {
+                        return ListTile(
+                          title: Text(_toSuggestions[index].toString()),
+                          onTap: () {
+                            _toController.text = _toSuggestions[index].toString();
+                            setState(() => _showToSuggestions = false);
+                          },
+                        );
+                      },
+                    ),
+                  ),
+              ],
+            ),
+            
+            const SizedBox(height: 16),
+            
+            // Date/Time selection
+            Row(
+              children: [
+                const Icon(Icons.schedule),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextButton(
+                    onPressed: _selectDateTime,
+                    child: Text(
+                      'Departure: ${_selectedDateTime.day}/${_selectedDateTime.month} ${_selectedDateTime.hour.toString().padLeft(2, '0')}:${_selectedDateTime.minute.toString().padLeft(2, '0')}',
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            
+            const SizedBox(height: 16),
+            
+            // Search button
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _isLoading ? null : _searchRoute,
+                child: _isLoading
+                    ? const CircularProgressIndicator()
+                    : const Text('Search Route'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _fromController.dispose();
+    _toController.dispose();
+    super.dispose();
+  }
+}
+
+// widgets/route_details_widget.dart
+import 'package:flutter/material.dart';
+import '../models/public_transport_route.dart';
+
+class RouteDetailsWidget extends StatelessWidget {
+  final PublicTransportRoute route;
+  final VoidCallback? onClear;
+
+  const RouteDetailsWidget({
+    super.key,
+    required this.route,
+    this.onClear,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          // Header with route summary
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Theme.of(context).primaryColor.withOpacity(0.1),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(12),
+                topRight: Radius.circular(12),
+              ),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.directions_transit, size: 32),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        route.formattedDuration,
+                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        route.formattedDistance,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      '${route.departureTime.hour.toString().padLeft(2, '0')}:${route.departureTime.minute.toString().padLeft(2, '0')}',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    const Text('→'),
+                    Text(
+                      '${route.arrivalTime.hour.toString().padLeft(2, '0')}:${route.arrivalTime.minute.toString().padLeft(2, '0')}',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+                if (onClear != null) ...[
+                  const SizedBox(width: 8),
+                  IconButton(
+                    onPressed: onClear,
+                    icon: const Icon(Icons.close),
+                    tooltip: 'Clear route',
+                  ),
+                ],
+              ],
+            ),
+          ),
+          
+          // Route legs
+          Container(
+            height: 300,
+            child: ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: route.legs.length,
+              itemBuilder: (context, index) {
+                final leg = route.legs[index];
+                return _buildLegItem(context, leg, index);
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLegItem(BuildContext context, RouteLeg leg, int index) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey.shade300),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: ExpansionTile(
+        leading: CircleAvatar(
+          backgroundColor: leg.isWalkingLeg ? Colors.green : Colors.blue,
+          child: Icon(
+            leg.isWalkingLeg ? Icons.directions_walk : Icons.directions_transit,
+            color: Colors.white,
+          ),
+        ),
+        title: Text(
+          leg.isWalkingLeg ? 'Walking' : 'Public Transport',
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        subtitle: Text(
+          '${leg.distance.toInt()}m • ${_formatLegDuration(leg)}',
+          style: TextStyle(color: Colors.grey[600]),
+        ),
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (leg.instructions.isNotEmpty) ...[
+                  const Text(
+                    'Instructions:',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  ...leg.instructions.take(5).map((instruction) => 
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            _getInstructionIcon(instruction.sign),
+                            size: 16,
+                            color: Colors.grey[600],
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              instruction.text,
+                              style: const TextStyle(fontSize: 14),
+                            ),
+                          ),
+                          Text(
+                            '${instruction.distance.toInt()}m',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  if (leg.instructions.length > 5)
+                    Text(
+                      '... and ${leg.instructions.length - 5} more steps',
+                      style: TextStyle(
+                        fontStyle: FontStyle.italic,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatLegDuration(RouteLeg leg) {
+    // Calculate duration from instructions
+    final totalTime = leg.instructions.fold<int>(
+      0, 
+      (sum, instruction) => sum + instruction.time,
+    );
+    
+    final minutes = totalTime ~/ 60000;
+    if (minutes > 60) {
+      final hours = minutes ~/ 60;
+      final remainingMinutes = minutes % 60;
+      return '${hours}h ${remainingMinutes}m';
+    }
+    return '${minutes}m';
+  }
+
+  IconData _getInstructionIcon(int sign) {
+    switch (sign) {
+      case -7: // Keep left
+        return Icons.subdirectory_arrow_left;
+      case -3: // Sharp left
+      case -2: // Left
+        return Icons.turn_left;
+      case -1: // Slight left
+        return Icons.turn_slight_left;
+      case 0: // Continue straight
+        return Icons.straight;
+      case 1: // Slight right
+        return Icons.turn_slight_right;
+      case 2: // Right
+      case 3: // Sharp right
+        return Icons.turn_right;
+      case 7: // Keep right
+        return Icons.subdirectory_arrow_right;
+      case 4: // Finish
+        return Icons.flag;
+      default:
+        return Icons.navigation;
+    }
+  }
+}
+
+
+
+
+
+
+// services/public_transport_service.dart
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:latlong2/latlong.dart';
+import '../models/public_transport_route.dart';
+
+class PublicTransportService {
+  final String baseUrl;
+  
+  PublicTransportService({this.baseUrl = 'http://localhost:8989'});
+
+  Future<PublicTransportRoute?> getRoute({
+    required LatLng origin,
+    required LatLng destination,
+    DateTime? departureTime,
+    String profile = 'pt',
+  }) async {
+    try {
+      final request = RouteRequest(
+        origin: origin,
+        destination: destination,
+        departureTime: departureTime ?? DateTime.now(),
+        profile: profile,
+      );
+
+      final url = request.buildUrl(baseUrl);
+      print('Requesting route: $url');
+
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 30));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        
+        if (data['paths'] != null && (data['paths'] as List).isNotEmpty) {
+          return PublicTransportRoute.fromJson(data);
+        } else {
+          throw Exception('No routes found');
+        }
+      } else {
+        throw Exception('Failed to fetch route: ${response.statusCode} - ${response.body}');
+      }
+    } catch (e) {
+      print('Error fetching route: $e');
+      rethrow;
+    }
+  }
+
+  Future<List<LatLng>> geocodeLocation(String locationName) async {
+    try {
+      final url = Uri.parse(
+        "https://nominatim.openstreetmap.org/search?q=$locationName&format=json&limit=5"
+      );
+      
+      final response = await http.get(url);
+      
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body) as List;
+        return data.map((item) {
+          final lat = double.parse(item['lat']);
+          final lon = double.parse(item['lon']);
+          return LatLng(lat, lon);
+        }).toList();
+      } else {
+        throw Exception('Failed to geocode location');
+      }
+    } catch (e) {
+      print('Error geocoding location: $e');
+      return [];
+    }
+  }
+
+  Future<String> reverseGeocode(LatLng location) async {
+    try {
+      final url = Uri.parse(
+        "https://nominatim.openstreetmap.org/reverse?lat=${location.latitude}&lon=${location.longitude}&format=json"
+      );
+      
+      final response = await http.get(url);
+      
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return data['display_name'] ?? 'Unknown location';
+      } else {
+        return 'Unknown location';
+      }
+    } catch (e) {
+      print('Error reverse geocoding: $e');
+      return 'Unknown location';
+    }
+  }
+}
+
+
+
+// models/public_transport_route.dart
+import 'package:latlong2/latlong.dart';
+
+class PublicTransportRoute {
+  final double distance;
+  final double weight;
+  final int time;
+  final List<LatLng> coordinates;
+  final List<RouteInstruction> instructions;
+  final List<RouteLeg> legs;
+  final DateTime departureTime;
+  final DateTime arrivalTime;
+
+  PublicTransportRoute({
+    required this.distance,
+    required this.weight,
+    required this.time,
+    required this.coordinates,
+    required this.instructions,
+    required this.legs,
+    required this.departureTime,
+    required this.arrivalTime,
+  });
+
+  factory PublicTransportRoute.fromJson(Map<String, dynamic> json) {
+    final path = json['paths'][0];
+    final points = path['points']['coordinates'] as List;
+    final coordinates = points
+        .map((coord) => LatLng(coord[1] as double, coord[0] as double))
+        .toList();
+
+    final instructionsJson = path['instructions'] as List;
+    final instructions = instructionsJson
+        .map((inst) => RouteInstruction.fromJson(inst))
+        .toList();
+
+    final legsJson = path['legs'] as List;
+    final legs = legsJson.map((leg) => RouteLeg.fromJson(leg)).toList();
+
+    return PublicTransportRoute(
+      distance: path['distance'].toDouble(),
+      weight: path['weight'].toDouble(),
+      time: path['time'],
+      coordinates: coordinates,
+      instructions: instructions,
+      legs: legs,
+      departureTime: DateTime.parse(legs.first.departureTime),
+      arrivalTime: DateTime.parse(legs.first.arrivalTime),
+    );
+  }
+
+  String get formattedDuration {
+    final hours = time ~/ 3600000;
+    final minutes = (time % 3600000) ~/ 60000;
+    if (hours > 0) {
+      return '${hours}h ${minutes}m';
+    }
+    return '${minutes}m';
+  }
+
+  String get formattedDistance {
+    if (distance >= 1000) {
+      return '${(distance / 1000).toStringAsFixed(1)} km';
+    }
+    return '${distance.toInt()} m';
+  }
+}
+
+class RouteInstruction {
+  final double distance;
+  final double heading;
+  final int sign;
+  final String text;
+  final int time;
+  final String streetName;
+
+  RouteInstruction({
+    required this.distance,
+    required this.heading,
+    required this.sign,
+    required this.text,
+    required this.time,
+    required this.streetName,
+  });
+
+  factory RouteInstruction.fromJson(Map<String, dynamic> json) {
+    return RouteInstruction(
+      distance: json['distance'].toDouble(),
+      heading: json['heading']?.toDouble() ?? 0.0,
+      sign: json['sign'],
+      text: json['text'],
+      time: json['time'],
+      streetName: json['street_name'] ?? '',
+    );
+  }
+}
+
+class RouteLeg {
+  final String type;
+  final String departureLocation;
+  final List<LatLng> geometry;
+  final double distance;
+  final List<RouteInstruction> instructions;
+  final String departureTime;
+  final String arrivalTime;
+
+  RouteLeg({
+    required this.type,
+    required this.departureLocation,
+    required this.geometry,
+    required this.distance,
+    required this.instructions,
+    required this.departureTime,
+    required this.arrivalTime,
+  });
+
+  factory RouteLeg.fromJson(Map<String, dynamic> json) {
+    final geometryCoords = json['geometry']['coordinates'] as List;
+    final geometry = geometryCoords
+        .map((coord) => LatLng(coord[1] as double, coord[0] as double))
+        .toList();
+
+    final instructionsJson = json['instructions'] as List;
+    final instructions = instructionsJson
+        .map((inst) => RouteInstruction.fromJson(inst))
+        .toList();
+
+    return RouteLeg(
+      type: json['type'],
+      departureLocation: json['departure_location'],
+      geometry: geometry,
+      distance: json['distance'].toDouble(),
+      instructions: instructions,
+      departureTime: json['departure_time'],
+      arrivalTime: json['arrival_time'],
+    );
+  }
+
+  bool get isWalkingLeg => type == 'walk';
+  bool get isPublicTransportLeg => type != 'walk';
+}
+
+class RouteRequest {
+  final LatLng origin;
+  final LatLng destination;
+  final DateTime departureTime;
+  final String profile;
+
+  RouteRequest({
+    required this.origin,
+    required this.destination,
+    required this.departureTime,
+    this.profile = 'pt',
+  });
+
+  Map<String, String> toQueryParameters(String baseUrl) {
+    final String originParam = '${origin.latitude},${origin.longitude}';
+    final String destinationParam = '${destination.latitude},${destination.longitude}';
+    final String departureTimeParam = departureTime.toIso8601String();
+
+    return {
+      'point': originParam,
+      'point': destinationParam,
+      'profile': profile,
+      'pt.earliest_departure_time': departureTimeParam,
+    };
+  }
+
+  String buildUrl(String baseUrl) {
+    final originParam = '${origin.latitude},${origin.longitude}';
+    final destinationParam = '${destination.latitude},${destination.longitude}';
+    final departureTimeParam = departureTime.toIso8601String();
+
+    return '$baseUrl/route?point=$originParam&point=$destinationParam&profile=$profile&pt.earliest_departure_time=$departureTimeParam';
+  }
+}
+
+
+// screens/enhanced_openstreetmap_screen.dart
+import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_map_location_marker/flutter_map_location_marker.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:location/location.dart';
+
+import '../models/public_transport_route.dart';
+import '../widgets/route_search_widget.dart';
+import '../widgets/route_details_widget.dart';
+
+class EnhancedOpenstreetmapScreen extends StatefulWidget {
+  const EnhancedOpenstreetmapScreen({super.key});
+
+  @override
+  State<EnhancedOpenstreetmapScreen> createState() => _EnhancedOpenstreetmapScreenState();
+}
+
+class _EnhancedOpenstreetmapScreenState extends State<EnhancedOpenstreetmapScreen>
+    with SingleTickerProviderStateMixin {
+  final MapController _mapController = MapController();
+  final Location _location = Location();
+  bool isLoading = true;
+
+  LatLng? _currentLocation;
+  PublicTransportRoute? _currentRoute;
+  bool _showRouteSearch = false;
+  bool _showRouteDetails = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeLocation();
+  }
+
+  Future<void> _initializeLocation() async {
+    if (!await _checkRequestPermission()) return;
+
+    _location.onLocationChanged.listen((LocationData locationData) {
+      if (locationData.latitude != null && locationData.longitude != null) {
+        setState(() {
+          _currentLocation = LatLng(
+            locationData.latitude!,
+            locationData.longitude!,
+          );
+          isLoading = false;
+        });
+      }
+    });
+  }
+
+  Future<bool> _checkRequestPermission() async {
+    bool serviceEnabled = await _location.serviceEnabled();
+
+    if (!serviceEnabled) {
+      serviceEnabled = await _location.requestService();
+      if (!serviceEnabled) return false;
+    }
+
+    PermissionStatus permissionGranted = await _location.hasPermission();
+    if (permissionGranted == PermissionStatus.denied) {
+      permissionGranted = await _location.requestPermission();
+      if (permissionGranted != PermissionStatus.granted) return false;
+    }
+    return true;
+  }
+
+  Future<void> _centerOnCurrentLocation() async {
+    if (_currentLocation != null) {
+      _mapController.move(_currentLocation!, 15);
+    } else {
+      _showErrorMessage("Cannot find current location.");
+    }
+  }
+
+  void _showErrorMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  void _showSuccessMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+
+
