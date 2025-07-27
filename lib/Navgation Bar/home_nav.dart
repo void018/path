@@ -12,7 +12,6 @@ class HomeNav extends StatefulWidget {
 
 class _HomeNavState extends State<HomeNav> {
   final PanelController _panelController = PanelController();
-
   @override
   Widget build(BuildContext context) {
     final double PanelHeightClosed = MediaQuery.of(context).size.height * 0.235;
@@ -20,7 +19,6 @@ class _HomeNavState extends State<HomeNav> {
     return Scaffold(
       body: Stack(
         children: [
-          OpenstreetmapScreen(),
           /*
 
 

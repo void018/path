@@ -21,7 +21,6 @@ class _NavigationScreenState extends State<NavigationScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          OpenstreetmapScreen(),
           /*
 
 

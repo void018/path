@@ -1,275 +1,656 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_location_marker/flutter_map_location_marker.dart';
+import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import 'package:location/location.dart';
 
-import 'pt_route_model.dart';
-import 'route_search_widget.dart';
-import 'route_details_widget.dart';
-
-class EnhancedOpenstreetmapScreen extends StatefulWidget {
-  const EnhancedOpenstreetmapScreen({super.key});
-
-  @override
-  State<EnhancedOpenstreetmapScreen> createState() =>
-      _EnhancedOpenstreetmapScreenState();
+// A simple data class to hold both coordinates and a readable address.
+class PointData {
+  final LatLng point;
+  final String address;
+  PointData(this.point, this.address);
 }
 
-class _EnhancedOpenstreetmapScreenState
-    extends State<EnhancedOpenstreetmapScreen>
-    with SingleTickerProviderStateMixin {
+// Enum to define what the user is currently selecting on the map.
+enum PointSelectionMode { none, origin, destination }
+
+// Enhanced route data classes
+class PublicTransportRoute {
+  final List<LatLng> coordinates;
+  final List<RouteLeg> legs;
+  final Duration totalDuration;
+  final double totalDistance;
+  final String summary;
+
+  PublicTransportRoute({
+    required this.coordinates,
+    required this.legs,
+    required this.totalDuration,
+    required this.totalDistance,
+    required this.summary,
+  });
+}
+
+class RouteLeg {
+  final List<LatLng> geometry;
+  final Duration duration;
+  final double distance;
+  final String mode; // 'walking', 'bus', 'train', etc.
+  final String instruction;
+  final List<TransitStop>? stops;
+  final String? routeName;
+  final String? routeColor;
+
+  RouteLeg({
+    required this.geometry,
+    required this.duration,
+    required this.distance,
+    required this.mode,
+    required this.instruction,
+    this.stops,
+    this.routeName,
+    this.routeColor,
+  });
+
+  bool get isWalkingLeg => mode == 'walking' || mode == 'foot';
+  bool get isPublicTransportLeg => !isWalkingLeg;
+}
+
+class TransitStop {
+  final LatLng geometry;
+  final String name;
+  final String? code;
+
+  TransitStop({
+    required this.geometry,
+    required this.name,
+    this.code,
+  });
+}
+
+class OpenstreetmapScreen extends StatefulWidget {
+  // Callback functions to notify the parent widget of changes.
+  final ValueChanged<PointData?> onOriginChanged;
+  final ValueChanged<PointData?> onDestinationChanged;
+  final ValueChanged<List<LatLng>>? onRouteChanged;
+  final ValueChanged<PublicTransportRoute?>? onPublicTransportRouteChanged;
+
+  // Input parameters from the parent widget.
+  final PointSelectionMode selectionMode;
+  final Stream<String> searchStream;
+
+  const OpenstreetmapScreen({
+    super.key,
+    required this.onOriginChanged,
+    required this.onDestinationChanged,
+    this.onRouteChanged,
+    this.onPublicTransportRouteChanged,
+    this.selectionMode = PointSelectionMode.none,
+    required this.searchStream,
+  });
+
+  @override
+  State<OpenstreetmapScreen> createState() => _OpenstreetmapScreenState();
+}
+
+class _OpenstreetmapScreenState extends State<OpenstreetmapScreen> {
   final MapController _mapController = MapController();
   final Location _location = Location();
+  late StreamSubscription<String> _searchSubscription;
+
   bool isLoading = true;
 
-  LatLng? _currentLocation;
-  PublicTransportRoute? _currentRoute;
-  bool _showRouteSearch = false;
-  bool _showRouteDetails = false;
+  LatLng? _origin;
+  LatLng? _destination;
+  List<LatLng> _route = [];
+  PublicTransportRoute? _publicTransportRoute;
 
   @override
   void initState() {
     super.initState();
     _initializeLocation();
+    // Listen to the search stream provided by the parent.
+    _searchSubscription = widget.searchStream.listen((query) {
+      if (query.isNotEmpty) {
+        _searchLocation(query);
+      }
+    });
   }
 
   @override
   void dispose() {
-    _mapController.dispose();
+    // Clean up the stream subscription to prevent memory leaks.
+    _searchSubscription.cancel();
     super.dispose();
   }
 
+  // Initializes location services and sets the user's current location as the default origin.
   Future<void> _initializeLocation() async {
-    try {
-      if (!await _checkRequestPermission()) {
-        setState(() => isLoading = false);
-        _showErrorMessage("Location permission denied.");
-        return;
-      }
+    bool permissionGranted = await _checkRequestPermission();
+    if (!permissionGranted) {
+      setState(() => isLoading = false);
+      // Fallback to a default location if permission is denied
+      const fallbackPoint = LatLng(51.5074, -0.1278);
+      _updateOrigin(fallbackPoint, "London");
 
+      // Wait for the first frame to render before moving the map
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _mapController.move(fallbackPoint, 13);
+        }
+      });
+      return;
+    }
+
+    try {
       final locationData = await _location.getLocation();
       if (locationData.latitude != null && locationData.longitude != null) {
-        final newLocation =
+        final initialPoint =
             LatLng(locationData.latitude!, locationData.longitude!);
+        _updateOrigin(initialPoint);
 
-        if (mounted) {
-          setState(() {
-            _currentLocation = newLocation;
-          });
-
-          // Move map after setState
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) {
-              _mapController.move(newLocation, 15.0);
-            }
-          });
-        }
+        // Wait for the first frame to render before moving the map
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            _mapController.move(initialPoint, 15);
+          }
+        });
       }
 
-      _location.onLocationChanged.listen((LocationData newLocationData) {
-        if (mounted &&
-            newLocationData.latitude != null &&
-            newLocationData.longitude != null) {
-          setState(() {
-            _currentLocation =
-                LatLng(newLocationData.latitude!, newLocationData.longitude!);
-          });
+      setState(() => isLoading = false);
+
+      _location.onLocationChanged.listen((newLocation) {
+        if (newLocation.latitude != null && newLocation.longitude != null) {
+          // This can be used to continuously update the user's blue dot,
+          // but we won't automatically re-assign the origin here unless specified.
         }
       });
     } catch (e) {
-      _showErrorMessage("Failed to get location: $e");
-    } finally {
-      if (mounted) {
-        setState(() => isLoading = false);
-      }
+      setState(() => isLoading = false);
+      _showMessage("Error initializing location: $e");
     }
   }
 
+  // Sets or updates the origin point.
+  Future<void> _updateOrigin(LatLng point, [String? knownAddress]) async {
+    setState(() => _origin = point);
+    final address = knownAddress ?? await _reverseGeocode(point);
+    widget.onOriginChanged(PointData(point, address));
+    if (_destination != null) {
+      await _fetchEnhancedRoute();
+    }
+  }
+
+  // Sets or updates the destination point.
+  Future<void> _updateDestination(LatLng point, [String? knownAddress]) async {
+    setState(() => _destination = point);
+    final address = knownAddress ?? await _reverseGeocode(point);
+    widget.onDestinationChanged(PointData(point, address));
+    if (_origin != null) {
+      await _fetchEnhancedRoute();
+    }
+    _mapController.move(point, 13);
+  }
+
+  // Handles map taps to select points.
+  void _handleMapTap(TapPosition tapPosition, LatLng point) {
+    if (widget.selectionMode == PointSelectionMode.destination) {
+      _updateDestination(point);
+    } else if (widget.selectionMode == PointSelectionMode.origin) {
+      _updateOrigin(point);
+    }
+  }
+
+  // Converts coordinates (LatLng) to a human-readable address.
+  Future<String> _reverseGeocode(LatLng point) async {
+    final url = Uri.parse(
+        'https://nominatim.openstreetmap.org/reverse?format=json&lat=${point.latitude}&lon=${point.longitude}');
+    try {
+      final response =
+          await http.get(url, headers: {'User-Agent': 'AppName/1.0'});
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return data['display_name'] ?? 'Unknown Location';
+      }
+    } catch (e) {
+      return 'Could not find address';
+    }
+    return 'Unknown Location';
+  }
+
+  // Enhanced search function that can handle both destination and origin setting
+  Future<void> _searchLocation(String location) async {
+    final url = Uri.parse(
+        "https://nominatim.openstreetmap.org/search?q=$location&format=json&limit=1");
+    try {
+      final response =
+          await http.get(url, headers: {'User-Agent': 'AppName/1.0'});
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data.isNotEmpty) {
+          final lat = double.parse(data[0]["lat"]);
+          final lon = double.parse(data[0]["lon"]);
+          final displayName = data[0]['display_name'];
+          final searchPoint = LatLng(lat, lon);
+
+          // Depending on selection mode, set either origin or destination
+          if (widget.selectionMode == PointSelectionMode.origin) {
+            _updateOrigin(searchPoint, displayName);
+          } else {
+            _updateDestination(searchPoint, displayName);
+          }
+        } else {
+          _showMessage("Location not found. Please try another search.");
+        }
+      } else {
+        _showMessage("Failed to fetch location. Please try again later.");
+      }
+    } catch (e) {
+      _showMessage("An error occurred during search.");
+    }
+  }
+
+  // Enhanced route fetching with public transport support
+  Future<void> _fetchEnhancedRoute() async {
+    if (_origin == null || _destination == null) return;
+
+    try {
+      // Try to fetch public transport route first
+      final ptRoute = await _fetchPublicTransportRoute();
+      if (ptRoute != null) {
+        setState(() {
+          _publicTransportRoute = ptRoute;
+          _route = ptRoute.coordinates;
+        });
+        widget.onRouteChanged?.call(ptRoute.coordinates);
+        widget.onPublicTransportRouteChanged?.call(ptRoute);
+        return;
+      }
+
+      // Fallback to driving route if PT route fails
+      await _fetchDrivingRoute();
+    } catch (e) {
+      _showMessage("Error fetching route: $e");
+      // Fallback to driving route
+      await _fetchDrivingRoute();
+    }
+  }
+
+  // Fetch public transport route (enhanced method)
+  Future<PublicTransportRoute?> _fetchPublicTransportRoute() async {
+    if (_origin == null || _destination == null) return null;
+
+    try {
+      // This is a mock implementation - replace with actual PT API
+      // For now, we'll create a hybrid route with walking + simulated PT
+      final List<RouteLeg> legs = [];
+      final List<LatLng> allCoordinates = [];
+
+      // Walking leg to transit stop
+      final walkingToStop = await _createWalkingLeg(
+        _origin!,
+        _interpolatePoint(_origin!, _destination!, 0.3),
+        "Walk to bus stop",
+      );
+      legs.add(walkingToStop);
+      allCoordinates.addAll(walkingToStop.geometry);
+
+      // Simulated bus leg
+      final busLeg = await _createTransitLeg(
+        _interpolatePoint(_origin!, _destination!, 0.3),
+        _interpolatePoint(_origin!, _destination!, 0.7),
+        "Take Bus Route 42",
+        "bus",
+      );
+      legs.add(busLeg);
+      allCoordinates.addAll(busLeg.geometry);
+
+      // Walking leg from transit stop to destination
+      final walkingFromStop = await _createWalkingLeg(
+        _interpolatePoint(_origin!, _destination!, 0.7),
+        _destination!,
+        "Walk to destination",
+      );
+      legs.add(walkingFromStop);
+      allCoordinates.addAll(walkingFromStop.geometry);
+
+      final totalDuration = legs.fold(
+        Duration.zero,
+        (prev, leg) => prev + leg.duration,
+      );
+
+      final totalDistance = legs.fold(
+        0.0,
+        (prev, leg) => prev + leg.distance,
+      );
+
+      return PublicTransportRoute(
+        coordinates: allCoordinates,
+        legs: legs,
+        totalDuration: totalDuration,
+        totalDistance: totalDistance,
+        summary: "Public transport route via Bus Route 42",
+      );
+    } catch (e) {
+      print("Error fetching PT route: $e");
+      return null;
+    }
+  }
+
+  // Helper method to create walking leg
+  Future<RouteLeg> _createWalkingLeg(
+    LatLng start,
+    LatLng end,
+    String instruction,
+  ) async {
+    final geometry = await _getRouteGeometry(start, end, 'foot');
+    final distance = _calculateDistance(start, end);
+
+    return RouteLeg(
+      geometry: geometry,
+      duration:
+          Duration(minutes: (distance * 12).round()), // ~5 km/h walking speed
+      distance: distance,
+      mode: 'walking',
+      instruction: instruction,
+    );
+  }
+
+  // Helper method to create transit leg
+  Future<RouteLeg> _createTransitLeg(
+    LatLng start,
+    LatLng end,
+    String instruction,
+    String mode,
+  ) async {
+    final geometry = await _getRouteGeometry(start, end, 'driving');
+    final distance = _calculateDistance(start, end);
+
+    // Create mock transit stops
+    final stops = <TransitStop>[
+      TransitStop(geometry: start, name: "Bus Stop A"),
+      TransitStop(geometry: end, name: "Bus Stop B"),
+    ];
+
+    return RouteLeg(
+      geometry: geometry,
+      duration:
+          Duration(minutes: (distance * 2).round()), // ~30 km/h average speed
+      distance: distance,
+      mode: mode,
+      instruction: instruction,
+      stops: stops,
+      routeName: "Route 42",
+      routeColor: "#FF0000",
+    );
+  }
+
+  // Helper method to get route geometry
+  Future<List<LatLng>> _getRouteGeometry(
+      LatLng start, LatLng end, String profile) async {
+    final url = Uri.parse(
+        "http://router.project-osrm.org/route/v1/$profile/${start.longitude},${start.latitude};${end.longitude},${end.latitude}?overview=full&geometries=polyline");
+
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['routes'] != null && data['routes'].isNotEmpty) {
+          final geometry = data['routes'][0]['geometry'];
+          return _decodePolyline(geometry);
+        }
+      }
+    } catch (e) {
+      print("Error getting route geometry: $e");
+    }
+
+    // Fallback to straight line
+    return [start, end];
+  }
+
+  // Fallback driving route method
+  Future<void> _fetchDrivingRoute() async {
+    if (_origin == null || _destination == null) return;
+
+    final url = Uri.parse(
+        "http://router.project-osrm.org/route/v1/driving/${_origin!.longitude},${_origin!.latitude};${_destination!.longitude},${_destination!.latitude}?overview=full&geometries=polyline");
+
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['routes'] != null && data['routes'].isNotEmpty) {
+          final geometry = data['routes'][0]['geometry'];
+          final points = _decodePolyline(geometry);
+          setState(() {
+            _route = points;
+            _publicTransportRoute = null;
+          });
+          // Notify parent widget about route changes
+          widget.onRouteChanged?.call(points);
+          widget.onPublicTransportRouteChanged?.call(null);
+        }
+      } else {
+        _showMessage("Failed to fetch route.");
+      }
+    } catch (e) {
+      _showMessage("An error occurred fetching the route.");
+    }
+  }
+
+  // Helper methods
+  LatLng _interpolatePoint(LatLng start, LatLng end, double ratio) {
+    final lat = start.latitude + (end.latitude - start.latitude) * ratio;
+    final lng = start.longitude + (end.longitude - start.longitude) * ratio;
+    return LatLng(lat, lng);
+  }
+
+  double _calculateDistance(LatLng start, LatLng end) {
+    const Distance distance = Distance();
+    return distance.as(LengthUnit.Kilometer, start, end);
+  }
+
+  // Decodes an encoded polyline string into a list of LatLng points.
+  List<LatLng> _decodePolyline(String encoded) {
+    List<LatLng> points = [];
+    int index = 0, len = encoded.length;
+    int lat = 0, lng = 0;
+
+    while (index < len) {
+      int b, shift = 0, result = 0;
+      do {
+        b = encoded.codeUnitAt(index++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      int dlat = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
+      lat += dlat;
+
+      shift = 0;
+      result = 0;
+      do {
+        b = encoded.codeUnitAt(index++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      int dlng = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
+      lng += dlng;
+
+      points.add(LatLng(lat / 1E5, lng / 1E5));
+    }
+    return points;
+  }
+
+  // Utility to show a SnackBar message.
+  void _showMessage(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
+
+  // Boilerplate for checking and requesting location permissions.
   Future<bool> _checkRequestPermission() async {
     bool serviceEnabled = await _location.serviceEnabled();
     if (!serviceEnabled) {
       serviceEnabled = await _location.requestService();
       if (!serviceEnabled) return false;
     }
-
-    PermissionStatus permissionGranted = await _location.hasPermission();
-    if (permissionGranted == PermissionStatus.denied) {
-      permissionGranted = await _location.requestPermission();
-      if (permissionGranted != PermissionStatus.granted) return false;
+    PermissionStatus permission = await _location.hasPermission();
+    if (permission == PermissionStatus.denied) {
+      permission = await _location.requestPermission();
+      if (permission != PermissionStatus.granted) return false;
     }
     return true;
   }
 
-  Future<void> _centerOnCurrentLocation() async {
-    if (_currentLocation != null) {
-      _mapController.move(_currentLocation!, 15.0);
-    } else {
-      _showErrorMessage("Cannot find current location.");
-    }
-  }
-
-  void _showErrorMessage(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red,
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 3),
-      ),
-    );
-  }
-
-  void _showSuccessMessage(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.green,
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 2),
-      ),
-    );
-  }
-
-  void _handleRouteFound(PublicTransportRoute route) {
-    if (!mounted) return;
-
+  // Public method to clear origin
+  void clearOrigin() {
     setState(() {
-      _currentRoute = route;
-      _showRouteSearch = false;
-      _showRouteDetails = true;
+      _origin = null;
+      _route.clear();
+      _publicTransportRoute = null;
     });
+    widget.onOriginChanged(null);
+    widget.onPublicTransportRouteChanged?.call(null);
+  }
 
-    // Fit map to route bounds
-    if (route.coordinates.isNotEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          try {
-            _mapController.fitCamera(
-              CameraFit.bounds(
-                bounds: LatLngBounds.fromPoints(route.coordinates),
-                padding: const EdgeInsets.all(50.0),
-              ),
-            );
-          } catch (e) {
-            print("Error fitting bounds: $e");
-          }
-        }
+  // Public method to clear destination
+  void clearDestination() {
+    setState(() {
+      _destination = null;
+      _route.clear();
+      _publicTransportRoute = null;
+    });
+    widget.onDestinationChanged(null);
+    widget.onPublicTransportRouteChanged?.call(null);
+  }
+
+  // Public method to swap origin and destination
+  void swapOriginDestination() {
+    if (_origin != null && _destination != null) {
+      final tempOrigin = _origin;
+      final tempDest = _destination;
+
+      setState(() {
+        _origin = tempDest;
+        _destination = tempOrigin;
       });
+
+      // Update addresses
+      _reverseGeocode(_origin!).then((address) {
+        widget.onOriginChanged(PointData(_origin!, address));
+      });
+
+      _reverseGeocode(_destination!).then((address) {
+        widget.onDestinationChanged(PointData(_destination!, address));
+      });
+
+      _fetchEnhancedRoute();
     }
-
-    _showSuccessMessage("Route found!");
   }
 
-  void _clearRoute() {
-    setState(() {
-      _currentRoute = null;
-      _showRouteDetails = false;
-    });
-  }
-
+  // Build enhanced route polylines
   List<Polyline> _buildRoutePolylines() {
-    if (_currentRoute == null) return [];
-
     List<Polyline> polylines = [];
 
-    // Main route polyline
-    if (_currentRoute!.coordinates.isNotEmpty) {
+    if (_publicTransportRoute != null) {
+      // Individual leg polylines with different colors
+      for (int i = 0; i < _publicTransportRoute!.legs.length; i++) {
+        final leg = _publicTransportRoute!.legs[i];
+        if (leg.geometry.isNotEmpty) {
+          Color legColor;
+          double strokeWidth;
+
+          if (leg.isWalkingLeg) {
+            legColor = Colors.orange;
+            strokeWidth = 3.0;
+          } else {
+            legColor = Colors.blue;
+            strokeWidth = 6.0;
+          }
+
+          polylines.add(
+            Polyline(
+              points: leg.geometry,
+              strokeWidth: strokeWidth,
+              color: legColor,
+            ),
+          );
+        }
+      }
+    } else if (_route.isNotEmpty) {
+      // Simple driving route
       polylines.add(
         Polyline(
-          points: _currentRoute!.coordinates,
-          strokeWidth: 5.0,
+          points: _route,
+          strokeWidth: 5,
           color: Colors.blueAccent,
         ),
       );
     }
 
-    // Individual leg polylines with different colors
-    for (int i = 0; i < _currentRoute!.legs.length; i++) {
-      final leg = _currentRoute!.legs[i];
-      if (leg.geometry.isNotEmpty) {
-        Color legColor;
-        if (leg.isWalkingLeg) {
-          legColor = Colors.orange;
-        } else {
-          legColor = Colors.blue;
-        }
-
-        polylines.add(
-          Polyline(
-            points: leg.geometry,
-            strokeWidth: leg.isWalkingLeg ? 3.0 : 6.0,
-            color: legColor,
-          ),
-        );
-      }
-    }
-
     return polylines;
   }
 
+  // Build enhanced route markers
   List<Marker> _buildRouteMarkers() {
-    if (_currentRoute == null) return [];
-
     List<Marker> markers = [];
 
-    // Add markers for transit stops
-    for (final leg in _currentRoute!.legs) {
-      if (leg.isPublicTransportLeg && leg.stops != null) {
-        for (final stop in leg.stops!) {
-          markers.add(
-            Marker(
-              point: stop.geometry,
-              width: 20,
-              height: 20,
-              child: Container(
-                decoration: const BoxDecoration(
-                  color: Colors.blue,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.directions_bus,
-                  color: Colors.white,
-                  size: 12,
-                ),
-              ),
-            ),
-          );
-        }
-      }
+    // Origin marker
+    if (_origin != null) {
+      markers.add(
+        Marker(
+          width: 80,
+          height: 80,
+          point: _origin!,
+          child: const Icon(Icons.my_location, color: Colors.blue, size: 30),
+        ),
+      );
     }
 
-    // Start and end markers
-    if (_currentRoute!.coordinates.isNotEmpty) {
-      // Start marker
+    // Destination marker
+    if (_destination != null) {
       markers.add(
         Marker(
-          point: _currentRoute!.coordinates.first,
-          width: 30,
-          height: 30,
-          child: const Icon(
-            Icons.location_on,
-            color: Colors.green,
-            size: 30,
-          ),
+          width: 80,
+          height: 80,
+          point: _destination!,
+          child: const Icon(Icons.location_on, color: Colors.red, size: 40),
         ),
       );
+    }
 
-      // End marker
-      markers.add(
-        Marker(
-          point: _currentRoute!.coordinates.last,
-          width: 30,
-          height: 30,
-          child: const Icon(
-            Icons.flag,
-            color: Colors.red,
-            size: 30,
-          ),
-        ),
-      );
+    // Transit stop markers
+    if (_publicTransportRoute != null) {
+      for (final leg in _publicTransportRoute!.legs) {
+        if (leg.isPublicTransportLeg && leg.stops != null) {
+          for (final stop in leg.stops!) {
+            markers.add(
+              Marker(
+                point: stop.geometry,
+                width: 20,
+                height: 20,
+                child: Container(
+                  decoration: const BoxDecoration(
+                    color: Colors.blue,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.directions_bus,
+                    color: Colors.white,
+                    size: 12,
+                  ),
+                ),
+              ),
+            );
+          }
+        }
+      }
     }
 
     return markers;
@@ -277,28 +658,14 @@ class _EnhancedOpenstreetmapScreenState
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("Public Transport Map"),
-        backgroundColor: Theme.of(context).primaryColor,
-        foregroundColor: Colors.white,
-        actions: [
-          if (_currentLocation != null)
-            IconButton(
-              onPressed: _centerOnCurrentLocation,
-              icon: const Icon(Icons.my_location),
-              tooltip: "Center on me",
-            ),
-        ],
-      ),
-      body: Stack(
-        children: [
-          FlutterMap(
+    return isLoading
+        ? const Center(child: CircularProgressIndicator())
+        : FlutterMap(
             mapController: _mapController,
             options: MapOptions(
-              initialCenter: _currentLocation ??
-                  const LatLng(15.5874, 32.5438), // Khartoum coordinates
-              initialZoom: 13.0,
+              initialCenter: _origin ?? const LatLng(51.5074, -0.1278),
+              initialZoom: 13,
+              onTap: _handleMapTap,
               minZoom: 5.0,
               maxZoom: 18.0,
               interactionOptions: const InteractionOptions(
@@ -311,137 +678,25 @@ class _EnhancedOpenstreetmapScreenState
                 userAgentPackageName: 'com.example.transport_app',
                 maxZoom: 19,
               ),
-              if (_currentLocation != null)
-                CurrentLocationLayer(
-                  alignPositionOnUpdate: AlignOnUpdate.once,
-                  alignDirectionOnUpdate: AlignOnUpdate.never,
-                  style: const LocationMarkerStyle(
-                    marker: DefaultLocationMarker(
-                      child: Icon(
-                        Icons.navigation,
-                        color: Colors.white,
-                      ),
+              CurrentLocationLayer(
+                alignPositionOnUpdate: AlignOnUpdate.once,
+                alignDirectionOnUpdate: AlignOnUpdate.never,
+                style: const LocationMarkerStyle(
+                  marker: DefaultLocationMarker(
+                    child: Icon(
+                      Icons.navigation,
+                      color: Colors.white,
                     ),
-                    markerSize: Size(40, 40),
-                    markerDirection: MarkerDirection.heading,
                   ),
+                  markerSize: Size(40, 40),
+                  markerDirection: MarkerDirection.heading,
                 ),
-              // Route polylines
-              if (_currentRoute != null)
-                PolylineLayer(
-                  polylines: _buildRoutePolylines(),
-                ),
-              // Route markers
-              if (_currentRoute != null)
-                MarkerLayer(
-                  markers: _buildRouteMarkers(),
-                ),
+              ),
+              // Enhanced route polylines
+              PolylineLayer(polylines: _buildRoutePolylines()),
+              // Enhanced route markers
+              MarkerLayer(markers: _buildRouteMarkers()),
             ],
-          ),
-
-          // Loading indicator
-          if (isLoading)
-            Container(
-              color: Colors.black26,
-              child: const Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
-                    ),
-                    SizedBox(height: 16),
-                    Text(
-                      'Loading location...',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-          // Route search widget
-          AnimatedPositioned(
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeInOut,
-            top: _showRouteSearch ? 0 : -400,
-            left: 0,
-            right: 0,
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
-                    blurRadius: 10,
-                    offset: const Offset(0, 5),
-                  ),
-                ],
-              ),
-              child: SafeArea(
-                child: RouteSearchWidget(
-                  onRouteFound: _handleRouteFound,
-                  onError: _showErrorMessage,
-                  currentLocation: _currentLocation,
-                ),
-              ),
-            ),
-          ),
-
-          // Route details widget
-          if (_currentRoute != null && _showRouteDetails)
-            AnimatedPositioned(
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(20),
-                    topRight: Radius.circular(20),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.2),
-                      blurRadius: 10,
-                      offset: const Offset(0, -5),
-                    ),
-                  ],
-                ),
-                child: RouteDetailsWidget(
-                  route: _currentRoute!,
-                  onClear: _clearRoute,
-                ),
-              ),
-            ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          setState(() {
-            _showRouteSearch = !_showRouteSearch;
-            if (_showRouteSearch) {
-              _clearRoute();
-            }
-          });
-        },
-        tooltip: _showRouteSearch ? 'Close Search' : 'Search Route',
-        backgroundColor: Theme.of(context).primaryColor,
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 200),
-          child: Icon(
-            _showRouteSearch ? Icons.close : Icons.directions,
-            key: ValueKey(_showRouteSearch),
-            color: Colors.white,
-          ),
-        ),
-      ),
-    );
+          );
   }
 }
