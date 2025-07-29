@@ -7,7 +7,7 @@ import 'pt_route_model.dart';
 class PublicTransportService {
   final String baseUrl;
 
-  PublicTransportService({this.baseUrl = 'http://10.0.2.2:8989'});
+  PublicTransportService({this.baseUrl = 'https://sikka-api.onrender.com'});
 
   Future<PublicTransportRoute?> getRoute({
     required LatLng origin,

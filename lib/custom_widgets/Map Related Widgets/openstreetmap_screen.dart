@@ -502,7 +502,7 @@ class _OpenstreetmapScreenState extends State<OpenstreetmapScreen> {
             children: [
               TileLayer(
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.example.transport_app',
+                userAgentPackageName: 'com.example.void_path',
                 maxZoom: 19,
               ),
               CurrentLocationLayer(

@@ -409,24 +409,7 @@ class RouteRequest {
     final departureTimeParam =
         '${departureTime.toUtc().toIso8601String().split('.').first}Z';
 
-    //   return '$baseUrl/route'
-    //       '?point=$originParam'
-    //       '&point=$destinationParam'
-    //       '&profile=pt'
-    //       '&pt.earliest_departure_time=$departureTimeParam'
-    //       '&pt.profile_duration=PT1200M'
-    //       '&pt.limit_street_time=PT300M'
-    //       '&pt.access_profile=foot'
-    //       '&pt.egress_profile=foot'
-    //       '&pt.ignore_transfers=false'
-    //       '&pt.arrive_by=false'
-    //       '&locale=en-US'
-    //       '&pt.profile=false'
-    //       '&pt.beta_access_time=1'
-    //       '&pt.beta_egress_time=1';
-
-    return "http://10.0.2.2:8989/route?pt.earliest_departure_time=2025-07-24T10%3A19%3A05Z&pt.arrive_by=false&locale=en-US&profile=pt&pt.profile=false&pt.access_profile=foot&pt.beta_access_time=1&pt.egress_profile=foot&pt.beta_egress_time=1&pt.profile_duration=PT120M&pt.limit_street_time=PT30M&pt.ignore_transfers=false&point=$originParam&point=$destinationParam";
-    // return "$baseUrl/route?pt.earliest_departure_time=$departureTimeParam&pt.arrive_by=false&locale=en-US&profile=pt&pt.profile=false&pt.access_profile=foot&pt.beta_access_time=1&pt.egress_profile=foot&pt.beta_egress_time=1&pt.profile_duration=PT1200M&pt.limit_street_time=PT300M&pt.ignore_transfers=false&point=$originParam&point=$destinationParam";
+    return "$baseUrl/route?pt.earliest_departure_time=$departureTimeParam&pt.arrive_by=false&locale=en-US&profile=pt&pt.profile=false&pt.access_profile=foot&pt.beta_access_time=1&pt.egress_profile=foot&pt.beta_egress_time=1&pt.profile_duration=PT120M&pt.limit_street_time=PT200M&pt.ignore_transfers=false&point=$originParam&point=$destinationParam";
   }
 }
 
