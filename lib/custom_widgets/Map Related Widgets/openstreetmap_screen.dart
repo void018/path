@@ -22,34 +22,6 @@ class PointData {
 // Enum to define what the user is currently selecting on the map.
 enum PointSelectionMode { none, origin, destination }
 
-// Enhanced route data classes
-
-// class RouteLeg {
-//   final List<LatLng> geometry;
-//   final Duration duration;
-//   final double distance;
-//   final String mode; // 'walking', 'bus', 'train', 'driving', etc.
-//   final String instruction;
-//   final List<TransitStop>? stops;
-//   final String? routeName;
-//   final String? routeColor;
-
-//   RouteLeg({
-//     required this.geometry,
-//     required this.duration,
-//     required this.distance,
-//     required this.mode,
-//     required this.instruction,
-//     this.stops,
-//     this.routeName,
-//     this.routeColor,
-//   });
-
-//   bool get isWalkingLeg => mode == 'walking' || mode == 'foot';
-//   bool get isDrivingLeg => mode == 'driving';
-//   bool get isPublicTransportLeg => !isWalkingLeg && !isDrivingLeg;
-// }
-
 class TransitStop {
   final LatLng geometry;
   final String name;
@@ -94,6 +66,9 @@ class _OpenstreetmapScreenState extends State<OpenstreetmapScreen> {
   final PublicTransportService _service = PublicTransportService();
 
   bool isLoading = true;
+  bool isRouteFetching = false; // New loading state for route fetching
+  String routeFetchingMessage =
+      "Finding route..."; // Message to show during loading
 
   LatLng? _origin;
   LatLng? _destination;
@@ -107,7 +82,8 @@ class _OpenstreetmapScreenState extends State<OpenstreetmapScreen> {
     _initializeLocation();
     // Listen to the search stream provided by the parent.
     _searchSubscription = widget.searchStream.listen((query) {
-      if (query.isNotEmpty) {
+      if (query.isNotEmpty && !isRouteFetching) {
+        // Prevent search during route fetching
         _searchLocation(query);
       }
     });
@@ -163,6 +139,8 @@ class _OpenstreetmapScreenState extends State<OpenstreetmapScreen> {
 
   // Sets or updates the origin point.
   Future<void> _updateOrigin(LatLng point, [String? knownAddress]) async {
+    if (isRouteFetching) return; // Prevent updates during route fetching
+
     setState(() => _origin = point);
     final address = knownAddress ?? await _reverseGeocode(point);
     widget.onOriginChanged(PointData(point, address));
@@ -173,6 +151,8 @@ class _OpenstreetmapScreenState extends State<OpenstreetmapScreen> {
 
   // Sets or updates the destination point.
   Future<void> _updateDestination(LatLng point, [String? knownAddress]) async {
+    if (isRouteFetching) return; // Prevent updates during route fetching
+
     setState(() => _destination = point);
     final address = knownAddress ?? await _reverseGeocode(point);
     widget.onDestinationChanged(PointData(point, address));
@@ -184,6 +164,9 @@ class _OpenstreetmapScreenState extends State<OpenstreetmapScreen> {
 
   // Handles map taps to select points.
   void _handleMapTap(TapPosition tapPosition, LatLng point) {
+    if (isRouteFetching)
+      return; // Prevent map interaction during route fetching
+
     if (widget.selectionMode == PointSelectionMode.destination) {
       _updateDestination(point);
     } else if (widget.selectionMode == PointSelectionMode.origin) {
@@ -210,6 +193,8 @@ class _OpenstreetmapScreenState extends State<OpenstreetmapScreen> {
 
   // Enhanced search function that can handle both destination and origin setting
   Future<void> _searchLocation(String location) async {
+    if (isRouteFetching) return; // Prevent search during route fetching
+
     final url = Uri.parse(
         "https://nominatim.openstreetmap.org/search?q=$location&format=json&limit=1");
     try {
@@ -240,32 +225,118 @@ class _OpenstreetmapScreenState extends State<OpenstreetmapScreen> {
     }
   }
 
-  // Enhanced route fetching - creates a PublicTransportRoute for driving routes
+  // Enhanced route fetching with proper loading states and error handling
   Future<void> _fetchRoute() async {
-    if (_origin == null || _destination == null) return;
+    if (_origin == null || _destination == null || isRouteFetching) return;
+
+    setState(() {
+      isRouteFetching = true;
+      routeFetchingMessage = "Finding route...";
+    });
 
     try {
-      final route = await _service.getRoute(
+      // Add a timeout for the API call
+      final route = await _service
+          .getRoute(
         origin: _origin!,
         destination: _destination!,
         departureTime: DateTime.now(),
+      )
+          .timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          throw TimeoutException(
+              'Request timed out', const Duration(seconds: 30));
+        },
       );
+
       if (route != null) {
         setState(() {
           _publicTransportRoute = route;
           _route = route.coordinates;
+          isRouteFetching = false;
         });
         widget.onRouteChanged?.call(route.coordinates);
         widget.onPublicTransportRouteChanged.call(route);
       } else {
-        _showMessage("no routes found");
+        setState(() {
+          isRouteFetching = false;
+        });
+        _showMessage("No routes found between the selected locations.");
+      }
+    } on TimeoutException catch (_) {
+      setState(() {
+        isRouteFetching = false;
+      });
+      _showMessage(
+          "Request timed out. The server might be starting up. Please try again in a moment.");
+    } on http.ClientException catch (e) {
+      setState(() {
+        isRouteFetching = false;
+      });
+      if (e.message.contains('Connection refused') ||
+          e.message.contains('No address associated') ||
+          e.message.contains('Network is unreachable')) {
+        _showMessage(
+            "Server is not available. It might be starting up. Please wait a moment and try again.");
+      } else {
+        _showMessage("Network error: ${e.message}");
       }
     } catch (e) {
-      _showMessage("Error fetching route: $e");
+      setState(() {
+        isRouteFetching = false;
+      });
+
+      // Check if it's a server wake-up scenario
+      String errorMessage = e.toString().toLowerCase();
+      if (errorMessage.contains('502') ||
+          errorMessage.contains('503') ||
+          errorMessage.contains('504') ||
+          errorMessage.contains('connection refused') ||
+          errorMessage.contains('server error') ||
+          errorMessage.contains('bad gateway')) {
+        setState(() {
+          routeFetchingMessage = "Server is waking up...";
+          isRouteFetching = true;
+        });
+
+        // Wait a bit and retry once
+        await Future.delayed(const Duration(seconds: 3));
+        try {
+          final retryRoute = await _service
+              .getRoute(
+                origin: _origin!,
+                destination: _destination!,
+                departureTime: DateTime.now(),
+              )
+              .timeout(const Duration(seconds: 45));
+
+          if (retryRoute != null) {
+            setState(() {
+              _publicTransportRoute = retryRoute;
+              _route = retryRoute.coordinates;
+              isRouteFetching = false;
+            });
+            widget.onRouteChanged?.call(retryRoute.coordinates);
+            widget.onPublicTransportRouteChanged.call(retryRoute);
+          } else {
+            setState(() {
+              isRouteFetching = false;
+            });
+            _showMessage("No routes found after server wake-up.");
+          }
+        } catch (retryError) {
+          setState(() {
+            isRouteFetching = false;
+          });
+          _showMessage(
+              "Server is still starting up. Please try again in a few moments.");
+        }
+      } else {
+        _showMessage("Error fetching route: $e");
+      }
     }
   }
-
-  // Fetches the driving route and wraps it in PublicTransportRoute structure
 
   // Helper method to calculate distance between two points
   double _calculateDistance(LatLng start, LatLng end) {
@@ -307,56 +378,36 @@ class _OpenstreetmapScreenState extends State<OpenstreetmapScreen> {
   // Utility to show a SnackBar message.
   void _showMessage(String message) {
     if (mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(message)));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(message),
+        duration: const Duration(seconds: 4),
+      ));
     }
   }
 
   // Public method to clear origin
   void clearOrigin() {
+    if (isRouteFetching) return; // Prevent clearing during route fetching
+
     setState(() {
       _origin = null;
       _route.clear();
       _publicTransportRoute = null;
     });
     widget.onOriginChanged(null);
-    widget.onPublicTransportRouteChanged;
   }
 
   // Public method to clear destination
   void clearDestination() {
+    if (isRouteFetching) return; // Prevent clearing during route fetching
+
     setState(() {
       _destination = null;
       _route.clear();
       _publicTransportRoute = null;
     });
     widget.onDestinationChanged(null);
-    widget.onPublicTransportRouteChanged;
   }
-
-  // Public method to swap origin and destination
-  // void swapOriginDestination() {
-  //   if (_origin != null && _destination != null) {
-  //     final tempOrigin = _origin;
-  //     final tempDest = _destination;
-
-  //     setState(() {
-  //       _origin = tempDest;
-  //       _destination = tempOrigin;
-  //     });
-
-  //     // Update addresses
-  //     _reverseGeocode(_origin!).then((address) {
-  //       widget.onOriginChanged(PointData(_origin!, address));
-  //     });
-
-  //     _reverseGeocode(_destination!).then((address) {
-  //       widget.onDestinationChanged(PointData(_destination!, address));
-  //     });
-
-  //     _fetchRoute();
-  //   }
-  // }
 
   // Build route polylines with enhanced styling
   List<Polyline> _buildRoutePolylines() {
@@ -478,50 +529,90 @@ class _OpenstreetmapScreenState extends State<OpenstreetmapScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return isLoading
-        ? const Center(child: CircularProgressIndicator())
-        : FlutterMap(
-            mapController: _mapController,
-            options: MapOptions(
-              initialCenter: _origin ?? const LatLng(51.5074, -0.1278),
-              initialZoom: 13,
-              onTap: _handleMapTap,
-              minZoom: 5.0,
-              maxZoom: 18.0,
-              interactionOptions: const InteractionOptions(
-                flags: InteractiveFlag.all, // keep rotation allowed
-              ),
-              onPositionChanged: (MapCamera pos, bool hasGesture) {
-                setState(() {
-                  _mapRotation = pos.rotation;
-                });
-              },
-            ),
-            children: [
-              TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.example.void_path',
-                maxZoom: 19,
-              ),
-              CurrentLocationLayer(
-                alignPositionOnUpdate: AlignOnUpdate.once,
-                alignDirectionOnUpdate: AlignOnUpdate.never,
-                style: const LocationMarkerStyle(
-                  marker: DefaultLocationMarker(
-                    child: Icon(
-                      Icons.navigation,
-                      color: Colors.white,
+    return Stack(
+      children: [
+        // Main map
+        isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : FlutterMap(
+                mapController: _mapController,
+                options: MapOptions(
+                  initialCenter: _origin ?? const LatLng(51.5074, -0.1278),
+                  initialZoom: 13,
+                  onTap: _handleMapTap,
+                  minZoom: 5.0,
+                  maxZoom: 18.0,
+                  interactionOptions: InteractionOptions(
+                    flags: isRouteFetching
+                        ? InteractiveFlag
+                            .none // Disable all interactions during route fetching
+                        : InteractiveFlag.all,
+                  ),
+                  onPositionChanged: (MapCamera pos, bool hasGesture) {
+                    if (!isRouteFetching) {
+                      setState(() {
+                        _mapRotation = pos.rotation;
+                      });
+                    }
+                  },
+                ),
+                children: [
+                  TileLayer(
+                    urlTemplate:
+                        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    userAgentPackageName: 'com.example.void_path',
+                    maxZoom: 19,
+                  ),
+                  CurrentLocationLayer(
+                    alignPositionOnUpdate: AlignOnUpdate.once,
+                    alignDirectionOnUpdate: AlignOnUpdate.never,
+                    style: const LocationMarkerStyle(
+                      marker: DefaultLocationMarker(
+                        child: Icon(
+                          Icons.navigation,
+                          color: Colors.white,
+                        ),
+                      ),
+                      markerSize: Size(40, 40),
+                      markerDirection: MarkerDirection.heading,
                     ),
                   ),
-                  markerSize: Size(40, 40),
-                  markerDirection: MarkerDirection.heading,
+                  // Enhanced route polylines
+                  PolylineLayer(polylines: _buildRoutePolylines()),
+                  // Enhanced route markers
+                  MarkerLayer(markers: _buildRouteMarkers()),
+                ],
+              ),
+
+        // Loading overlay during route fetching
+        if (isRouteFetching)
+          Container(
+            color: Colors.black.withOpacity(0.3),
+            child: Center(
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const CircularProgressIndicator(),
+                      const SizedBox(height: 16),
+                      Text(
+                        routeFetchingMessage,
+                        style: const TextStyle(fontSize: 16),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        "Please wait...",
+                        style: TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              // Enhanced route polylines
-              PolylineLayer(polylines: _buildRoutePolylines()),
-              // Enhanced route markers
-              MarkerLayer(markers: _buildRouteMarkers()),
-            ],
-          );
+            ),
+          ),
+      ],
+    );
   }
 }

@@ -12,8 +12,12 @@ void main() {
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
+
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(home: UnifiedNavigationScreen());
+    return MaterialApp(
+      home: const LandingScreen(), // Start with the animated landing screen
+      debugShowCheckedModeBanner: false, // Optional: removes debug banner
+    );
   }
 }

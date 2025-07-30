@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:latlong2/latlong.dart';
 
 class PublicTransportRoute {
@@ -31,6 +32,39 @@ class PublicTransportRoute {
     required this.descend,
     required this.snappedWaypoints,
   });
+
+  // Helper method to calculate distance between two coordinates using Haversine formula
+  static double _calculateDistance(LatLng point1, LatLng point2) {
+    const double earthRadius = 6371000; // Earth's radius in meters
+
+    double lat1Rad = point1.latitude * (math.pi / 180);
+    double lat2Rad = point2.latitude * (math.pi / 180);
+    double deltaLatRad = (point2.latitude - point1.latitude) * (math.pi / 180);
+    double deltaLngRad =
+        (point2.longitude - point1.longitude) * (math.pi / 180);
+
+    double a = math.sin(deltaLatRad / 2) * math.sin(deltaLatRad / 2) +
+        math.cos(lat1Rad) *
+            math.cos(lat2Rad) *
+            math.sin(deltaLngRad / 2) *
+            math.sin(deltaLngRad / 2);
+
+    double c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+
+    return earthRadius * c;
+  }
+
+  // Helper method to calculate total distance from coordinates list
+  static double _calculateTotalDistance(List<LatLng> coordinates) {
+    if (coordinates.length < 2) return 0.0;
+
+    double totalDistance = 0.0;
+    for (int i = 0; i < coordinates.length - 1; i++) {
+      totalDistance += _calculateDistance(coordinates[i], coordinates[i + 1]);
+    }
+
+    return totalDistance;
+  }
 
   factory PublicTransportRoute.fromJson(Map<String, dynamic> json) {
     final path = json['paths'][0];
@@ -67,8 +101,14 @@ class PublicTransportRoute {
     final arr =
         legs.isNotEmpty ? DateTime.tryParse(legs.last.arrivalTime) : null;
 
+    // Calculate distance - use API provided distance or calculate from coordinates
+    double calculatedDistance = (path['distance'] ?? 0.0).toDouble();
+    if (calculatedDistance == 0.0 && coordinates.isNotEmpty) {
+      calculatedDistance = _calculateTotalDistance(coordinates);
+    }
+
     return PublicTransportRoute(
-      distance: (path['distance'] ?? 0.0).toDouble(),
+      distance: calculatedDistance,
       weight: (path['weight'] ?? 0.0).toDouble(),
       time: path['time'] ?? 0,
       transfers: path['transfers'] ?? 0,
