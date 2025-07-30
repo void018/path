@@ -7,6 +7,7 @@ import 'package:flutter_map_location_marker/flutter_map_location_marker.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import 'package:location/location.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:public_transportation/custom_widgets/Map%20Related%20Widgets/pt_route_model.dart';
 import 'package:public_transportation/custom_widgets/Map%20Related%20Widgets/pt_route_service.dart';
 import 'package:public_transportation/screens/unified_screen.dart';
@@ -98,6 +99,7 @@ class _OpenstreetmapScreenState extends State<OpenstreetmapScreen> {
   LatLng? _destination;
   List<LatLng> _route = [];
   PublicTransportRoute? _publicTransportRoute;
+  double _mapRotation = 0.0;
 
   @override
   void initState() {
@@ -118,16 +120,14 @@ class _OpenstreetmapScreenState extends State<OpenstreetmapScreen> {
     super.dispose();
   }
 
-  // Initializes location services and sets the user's current location as the default origin.
   Future<void> _initializeLocation() async {
-    bool permissionGranted = await _checkRequestPermission();
-    if (!permissionGranted) {
+    final status = await Permission.location.request();
+
+    if (!status.isGranted) {
       setState(() => isLoading = false);
-      // Fallback to a default location if permission is denied
       const fallbackPoint = LatLng(51.5074, -0.1278);
       _updateOrigin(fallbackPoint, "London");
 
-      // Wait for the first frame to render before moving the map
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           _mapController.move(fallbackPoint, 13);
@@ -143,7 +143,6 @@ class _OpenstreetmapScreenState extends State<OpenstreetmapScreen> {
             LatLng(locationData.latitude!, locationData.longitude!);
         _updateOrigin(initialPoint);
 
-        // Wait for the first frame to render before moving the map
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
             _mapController.move(initialPoint, 15);
@@ -154,10 +153,7 @@ class _OpenstreetmapScreenState extends State<OpenstreetmapScreen> {
       setState(() => isLoading = false);
 
       _location.onLocationChanged.listen((newLocation) {
-        if (newLocation.latitude != null && newLocation.longitude != null) {
-          // This can be used to continuously update the user's blue dot,
-          // but we won't automatically re-assign the origin here unless specified.
-        }
+        // Optionally handle live location updates
       });
     } catch (e) {
       setState(() => isLoading = false);
@@ -316,21 +312,6 @@ class _OpenstreetmapScreenState extends State<OpenstreetmapScreen> {
     }
   }
 
-  // Boilerplate for checking and requesting location permissions.
-  Future<bool> _checkRequestPermission() async {
-    bool serviceEnabled = await _location.serviceEnabled();
-    if (!serviceEnabled) {
-      serviceEnabled = await _location.requestService();
-      if (!serviceEnabled) return false;
-    }
-    PermissionStatus permission = await _location.hasPermission();
-    if (permission == PermissionStatus.denied) {
-      permission = await _location.requestPermission();
-      if (permission != PermissionStatus.granted) return false;
-    }
-    return true;
-  }
-
   // Public method to clear origin
   void clearOrigin() {
     setState(() {
@@ -382,36 +363,35 @@ class _OpenstreetmapScreenState extends State<OpenstreetmapScreen> {
     List<Polyline> polylines = [];
 
     if (_publicTransportRoute != null) {
-      // Individual leg polylines with appropriate colors
-      for (int i = 0; i < _publicTransportRoute!.legs.length; i++) {
-        final leg = _publicTransportRoute!.legs[i];
-        if (leg.geometry.isNotEmpty) {
-          Color legColor;
-          double strokeWidth;
+      for (final leg in _publicTransportRoute!.legs) {
+        if (leg.geometry.isEmpty) continue;
 
-          if (leg.isWalkingLeg) {
-            legColor = Colors.orange;
-            strokeWidth = 3.0;
-          } else if (leg.isPublicTransportLeg) {
-            legColor = Colors.blueAccent;
-            strokeWidth = 5.0;
-          } else {
-            // Public transport
-            legColor = Colors.blue;
-            strokeWidth = 6.0;
-          }
+        Color legColor;
+        double strokeWidth;
+        bool isDotted = false;
 
-          polylines.add(
-            Polyline(
+        if (leg.isWalkingLeg) {
+          legColor = const Color.fromARGB(255, 0, 0, 0);
+          strokeWidth = 5.0;
+          isDotted = true;
+        } else if (leg.isPublicTransportLeg) {
+          legColor = Colors.blueAccent;
+          strokeWidth = 5.0;
+        } else {
+          legColor = Colors.blue;
+          strokeWidth = 6.0;
+        }
+
+        polylines.add(
+          Polyline(
               points: leg.geometry,
               strokeWidth: strokeWidth,
               color: legColor,
-            ),
-          );
-        }
+              pattern:
+                  isDotted ? StrokePattern.dotted() : StrokePattern.solid()),
+        );
       }
     } else if (_route.isNotEmpty) {
-      // Fallback simple route
       polylines.add(
         Polyline(
           points: _route,
@@ -424,7 +404,6 @@ class _OpenstreetmapScreenState extends State<OpenstreetmapScreen> {
     return polylines;
   }
 
-  // Build enhanced route markers
   List<Marker> _buildRouteMarkers() {
     List<Marker> markers = [];
 
@@ -435,7 +414,10 @@ class _OpenstreetmapScreenState extends State<OpenstreetmapScreen> {
           width: 80,
           height: 80,
           point: _origin!,
-          child: const Icon(Icons.my_location, color: Colors.blue, size: 30),
+          child: Transform.rotate(
+            angle: -_mapRotation * (3.1415926535 / 180),
+            child: const Icon(Icons.my_location, color: Colors.blue, size: 30),
+          ),
         ),
       );
     }
@@ -447,30 +429,41 @@ class _OpenstreetmapScreenState extends State<OpenstreetmapScreen> {
           width: 80,
           height: 80,
           point: _destination!,
-          child: const Icon(Icons.location_on, color: Colors.red, size: 40),
+          child: Transform.rotate(
+            angle: -_mapRotation * (3.1415926535 / 180),
+            child: const Icon(Icons.location_on, color: Colors.red, size: 40),
+          ),
         ),
       );
     }
 
-    // Transit stop markers (if any)
+    // Transit stop markers (only first and last stop of each leg)
     if (_publicTransportRoute != null) {
       for (final leg in _publicTransportRoute!.legs) {
-        if (leg.isPublicTransportLeg && leg.stops != null) {
-          for (final stop in leg.stops!) {
+        if (leg.isPublicTransportLeg &&
+            leg.stops != null &&
+            leg.stops!.length >= 2) {
+          final firstStop = leg.stops!.first;
+          final lastStop = leg.stops!.last;
+
+          for (final stop in [firstStop, lastStop]) {
             markers.add(
               Marker(
                 point: stop.geometry,
-                width: 20,
-                height: 20,
-                child: Container(
-                  decoration: const BoxDecoration(
-                    color: Colors.blue,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.directions_bus,
-                    color: Colors.white,
-                    size: 12,
+                width: 30,
+                height: 30,
+                child: Transform.rotate(
+                  angle: -_mapRotation * (3.1415926535 / 180),
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      color: Colors.blue,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.directions_bus,
+                      color: Colors.white,
+                      size: 16,
+                    ),
                   ),
                 ),
               ),
@@ -496,8 +489,13 @@ class _OpenstreetmapScreenState extends State<OpenstreetmapScreen> {
               minZoom: 5.0,
               maxZoom: 18.0,
               interactionOptions: const InteractionOptions(
-                flags: InteractiveFlag.all,
+                flags: InteractiveFlag.all, // keep rotation allowed
               ),
+              onPositionChanged: (MapCamera pos, bool hasGesture) {
+                setState(() {
+                  _mapRotation = pos.rotation;
+                });
+              },
             ),
             children: [
               TileLayer(
