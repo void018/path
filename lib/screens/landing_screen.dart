@@ -152,7 +152,7 @@ class _LandingScreenState extends State<LandingScreen>
                         child: Align(
                           alignment: Alignment.centerLeft,
                           child: Text(
-                            'Welcome to PATH',
+                            'Welcome to SIKKA',
                             textAlign: TextAlign.left,
                             style: TextStyle(
                               color: Color.fromARGB(255, 255, 167, 38),
