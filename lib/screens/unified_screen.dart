@@ -306,7 +306,7 @@ class _UnifiedNavigationScreenState extends State<UnifiedNavigationScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    " _publicTransportRoute!.summary",
+                    _publicTransportRoute!.transfersText,
                     style: const TextStyle(fontSize: 14),
                   ),
                   const SizedBox(height: 4),
@@ -748,7 +748,7 @@ class _UnifiedNavigationScreenState extends State<UnifiedNavigationScreen> {
                                       const SizedBox(width: 8),
                                       Expanded(
                                         child: Text(
-                                          leg.tripHeadsign!,
+                                          leg.displayName,
                                           style: const TextStyle(
                                             fontSize: 14,
                                             fontWeight: FontWeight.w600,

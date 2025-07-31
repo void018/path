@@ -426,7 +426,7 @@ class _OpenstreetmapScreenState extends State<OpenstreetmapScreen> {
           strokeWidth = 5.0;
           isDotted = true;
         } else if (leg.isPublicTransportLeg) {
-          legColor = Colors.blueAccent;
+          legColor = leg.routeColor!;
           strokeWidth = 5.0;
         } else {
           legColor = Colors.blue;

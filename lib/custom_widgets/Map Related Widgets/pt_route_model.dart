@@ -1,6 +1,74 @@
 import 'dart:convert';
 import 'dart:math' as math;
+import 'package:flutter/services.dart';
 import 'package:latlong2/latlong.dart';
+
+class RouteRegistry {
+  static final RouteRegistry _instance = RouteRegistry._internal();
+  factory RouteRegistry() => _instance;
+  RouteRegistry._internal();
+
+  Map<String, String> _routeNames = {};
+  Map<String, Color> _routeColors = {};
+  bool _isLoaded = false;
+
+  // Default colors for routes (you can customize these)
+  static const List<Color> _defaultColors = [
+    Color(0xFFFF5722), // Deep Orange
+    Color(0xFF2196F3), // Blue
+    Color(0xFF4CAF50), // Green
+    Color(0xFFFF9800), // Orange
+    Color(0xFF9C27B0), // Purple
+    Color(0xFFF44336), // Red
+    Color(0xFF00BCD4), // Cyan
+    Color(0xFF795548), // Brown
+    Color(0xFF607D8B), // Blue Grey
+    Color(0xFFE91E63), // Pink
+    Color(0xFF3F51B5), // Indigo
+    Color(0xFF009688), // Teal
+    Color(0xFFFFC107), // Amber
+    Color(0xFF8BC34A), // Light Green
+    Color(0xFF673AB7), // Deep Purple
+    Color(0xFFCDDC39), // Lime
+  ];
+
+  Future<void> loadRoutes() async {
+    if (_isLoaded) return;
+
+    try {
+      final String jsonString =
+          await rootBundle.loadString('assets/route_name_map.json');
+      final Map<String, dynamic> routesData = json.decode(jsonString);
+
+      _routeNames =
+          routesData.map((key, value) => MapEntry(key, value.toString()));
+
+      // Assign colors to routes
+      int colorIndex = 0;
+      for (String routeId in _routeNames.keys) {
+        _routeColors[routeId] =
+            _defaultColors[colorIndex % _defaultColors.length];
+        colorIndex++;
+      }
+
+      _isLoaded = true;
+    } catch (e) {
+      print('Error loading routes.json: $e');
+      // Continue with empty route names if file can't be loaded
+      _isLoaded = true;
+    }
+  }
+
+  String getRouteName(String routeId) {
+    return _routeNames[routeId] ?? 'Route $routeId';
+  }
+
+  Color getRouteColor(String routeId) {
+    return _routeColors[routeId] ?? _defaultColors[0];
+  }
+
+  bool get isLoaded => _isLoaded;
+}
 
 class PublicTransportRoute {
   final double distance;
@@ -62,11 +130,14 @@ class PublicTransportRoute {
     for (int i = 0; i < coordinates.length - 1; i++) {
       totalDistance += _calculateDistance(coordinates[i], coordinates[i + 1]);
     }
-
     return totalDistance;
   }
 
-  factory PublicTransportRoute.fromJson(Map<String, dynamic> json) {
+  static Future<PublicTransportRoute> fromJson(
+      Map<String, dynamic> json) async {
+    // Ensure route registry is loaded
+    await RouteRegistry().loadRoutes();
+
     final path = json['paths'][0];
 
     // Parse coordinates
@@ -91,7 +162,7 @@ class PublicTransportRoute {
         .map((inst) => RouteInstruction.fromJson(inst))
         .toList();
 
-    // Parse legs
+    // Parse legs with distance calculation
     final legsJson = path['legs'] as List? ?? [];
     final legs = legsJson.map((l) => RouteLeg.fromJson(l)).toList();
 
@@ -101,14 +172,19 @@ class PublicTransportRoute {
     final arr =
         legs.isNotEmpty ? DateTime.tryParse(legs.last.arrivalTime) : null;
 
-    // Calculate distance - use API provided distance or calculate from coordinates
-    double calculatedDistance = (path['distance'] ?? 0.0).toDouble();
-    if (calculatedDistance == 0.0 && coordinates.isNotEmpty) {
-      calculatedDistance = _calculateTotalDistance(coordinates);
+    // Calculate total distance by summing all leg distances
+    double totalDistance = legs.fold(0.0, (sum, leg) => sum + leg.distance);
+
+    // Fallback: if no leg distances or total is 0, use API distance or calculate from main coordinates
+    if (totalDistance == 0.0) {
+      totalDistance = (path['distance'] ?? 0.0).toDouble();
+      if (totalDistance == 0.0 && coordinates.isNotEmpty) {
+        totalDistance = _calculateTotalDistance(coordinates);
+      }
     }
 
     return PublicTransportRoute(
-      distance: calculatedDistance,
+      distance: totalDistance,
       weight: (path['weight'] ?? 0.0).toDouble(),
       time: path['time'] ?? 0,
       transfers: path['transfers'] ?? 0,
@@ -299,6 +375,10 @@ class RouteLeg {
   final String? tripId;
   final String? routeId;
 
+  // New fields for route name and color
+  final String? routeName;
+  final Color? routeColor;
+
   RouteLeg({
     required this.type,
     required this.departureLocation,
@@ -315,7 +395,53 @@ class RouteLeg {
     this.stops,
     this.tripId,
     this.routeId,
+    this.routeName,
+    this.routeColor,
   });
+
+  // Helper method to calculate distance from coordinates
+  static double _calculateDistanceFromCoordinates(List<LatLng> coordinates) {
+    if (coordinates.length < 2) return 0.0;
+
+    double totalDistance = 0.0;
+    for (int i = 0; i < coordinates.length - 1; i++) {
+      totalDistance += _calculateDistance(coordinates[i], coordinates[i + 1]);
+    }
+    return totalDistance;
+  }
+
+  // Helper method to calculate distance from stops (for PT legs)
+  static double _calculateDistanceFromStops(List<TransitStop> stops) {
+    if (stops.length < 2) return 0.0;
+
+    double totalDistance = 0.0;
+    for (int i = 0; i < stops.length - 1; i++) {
+      totalDistance +=
+          _calculateDistance(stops[i].geometry, stops[i + 1].geometry);
+    }
+    return totalDistance;
+  }
+
+  // Haversine formula for calculating distance between two points
+  static double _calculateDistance(LatLng point1, LatLng point2) {
+    const double earthRadius = 6371000; // Earth's radius in meters
+
+    double lat1Rad = point1.latitude * (math.pi / 180);
+    double lat2Rad = point2.latitude * (math.pi / 180);
+    double deltaLatRad = (point2.latitude - point1.latitude) * (math.pi / 180);
+    double deltaLngRad =
+        (point2.longitude - point1.longitude) * (math.pi / 180);
+
+    double a = math.sin(deltaLatRad / 2) * math.sin(deltaLatRad / 2) +
+        math.cos(lat1Rad) *
+            math.cos(lat2Rad) *
+            math.sin(deltaLngRad / 2) *
+            math.sin(deltaLngRad / 2);
+
+    double c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+
+    return earthRadius * c;
+  }
 
   factory RouteLeg.fromJson(Map<String, dynamic> json) {
     // Parse geometry coordinates
@@ -337,11 +463,40 @@ class RouteLeg {
       stops = stopsJson.map((stop) => TransitStop.fromJson(stop)).toList();
     }
 
+    // Calculate distance based on leg type and available data
+    double legDistance = (json['distance'] ?? 0.0).toDouble();
+
+    // If distance is not provided or is 0, calculate it
+    if (legDistance == 0.0) {
+      final legType = json['type'] ?? 'walk';
+
+      if (legType == 'pt' && stops != null && stops.length >= 2) {
+        // For PT legs, prefer stops for distance calculation
+        legDistance = _calculateDistanceFromStops(stops);
+        print('Calculated PT leg distance from stops: $legDistance meters');
+      } else if (geometry.isNotEmpty) {
+        // For walking legs or when stops are not available, use geometry
+        legDistance = _calculateDistanceFromCoordinates(geometry);
+        print('Calculated leg distance from coordinates: $legDistance meters');
+      }
+    }
+
+    // Get route name and color from registry if this is a PT leg
+    String? routeName;
+    Color? routeColor;
+    final routeId = json['route_id']?.toString();
+
+    if (json['type'] == 'pt' && routeId != null) {
+      final registry = RouteRegistry();
+      routeName = registry.getRouteName(routeId);
+      routeColor = registry.getRouteColor(routeId);
+    }
+
     return RouteLeg(
       type: json['type'] ?? 'walk',
       departureLocation: json['departure_location'] ?? 'Unknown',
       geometry: geometry,
-      distance: (json['distance'] ?? 0.0).toDouble(),
+      distance: legDistance,
       instructions: instructions,
       departureTime: json['departure_time'] ?? '',
       arrivalTime: json['arrival_time'] ?? '',
@@ -352,7 +507,9 @@ class RouteLeg {
       travelTime: json['travel_time'],
       stops: stops,
       tripId: json['trip_id'],
-      routeId: json['route_id'],
+      routeId: routeId,
+      routeName: routeName,
+      routeColor: routeColor,
     );
   }
 
@@ -361,8 +518,16 @@ class RouteLeg {
 
   // Helper methods for transit legs
   String get displayName {
-    if (isPublicTransportLeg && tripHeadsign != null) {
-      return tripHeadsign!;
+    if (isPublicTransportLeg) {
+      // Prioritize route name from registry, then trip headsign, then fallback
+      if (routeName != null && routeName!.isNotEmpty) {
+        return routeName!;
+      } else if (tripHeadsign != null && tripHeadsign!.isNotEmpty) {
+        return tripHeadsign!;
+      } else if (routeId != null) {
+        return 'Route $routeId';
+      }
+      return 'Transit';
     }
     return type == 'walk' ? 'Walking' : 'Transit';
   }
@@ -411,6 +576,15 @@ class RouteLeg {
       return '${hours}h ${minutes}m';
     } else {
       return '${minutes}m';
+    }
+  }
+
+  String get formattedDistance {
+    if (distance >= 1000) {
+      final km = distance / 1000;
+      return '${km.toStringAsFixed(1)} km';
+    } else {
+      return '${distance.toInt()} m';
     }
   }
 }
@@ -502,13 +676,17 @@ class PublicTransportResponse {
     required this.paths,
   });
 
-  factory PublicTransportResponse.fromJson(Map<String, dynamic> json) {
+  static Future<PublicTransportResponse> fromJson(
+      Map<String, dynamic> json) async {
     final pathsJson = json['paths'] as List? ?? [];
-    final paths = pathsJson.map((path) {
-      return PublicTransportRoute.fromJson({
+    final paths = <PublicTransportRoute>[];
+
+    for (final path in pathsJson) {
+      final route = await PublicTransportRoute.fromJson({
         'paths': [path]
       });
-    }).toList();
+      paths.add(route);
+    }
 
     return PublicTransportResponse(
       hints: ApiHints.fromJson(json['hints'] ?? {}),
