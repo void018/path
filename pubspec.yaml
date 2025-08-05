@@ -60,6 +60,7 @@
     assets:
       - assets/publictransport.png
       - assets/route_name_map.json
+      - assets/SIKKA.png
       
       
   flutter_native_splash:

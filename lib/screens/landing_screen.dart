@@ -136,8 +136,8 @@ class _LandingScreenState extends State<LandingScreen>
                 // Background Image with fade in
                 Positioned.fill(
                   child: Image.asset(
-                    'assets/publictransport.png',
-                    fit: BoxFit.fitWidth,
+                    'assets/SIKKA.png',
+                    fit: BoxFit.cover,
                   ),
                 ),
 
@@ -152,7 +152,7 @@ class _LandingScreenState extends State<LandingScreen>
                         child: Align(
                           alignment: Alignment.centerLeft,
                           child: Text(
-                            'Welcome to PATH',
+                            'Welcome to SIKKA',
                             textAlign: TextAlign.left,
                             style: TextStyle(
                               color: Color(0xff003B73),
