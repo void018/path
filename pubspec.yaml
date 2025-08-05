@@ -63,17 +63,16 @@
       
       
   flutter_native_splash:
-    color: "#ffffff"        # Background color
+    color: "#003B73"        # Background color
     image: assets/logo.png  # Your logo path
     android: true
     ios: true
     web: false   
-    icon_radius: 0 
   
 
     android_12:
       image: assets/logo.png
-      icon_background_color: "#ffffff"  
+      icon_background_color: "#003B73"  
 
 
   flutter_launcher_icons:

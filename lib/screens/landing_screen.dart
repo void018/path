@@ -137,7 +137,7 @@ class _LandingScreenState extends State<LandingScreen>
                 Positioned.fill(
                   child: Image.asset(
                     'assets/publictransport.png',
-                    fit: BoxFit.cover,
+                    fit: BoxFit.fitWidth,
                   ),
                 ),
 
@@ -155,7 +155,7 @@ class _LandingScreenState extends State<LandingScreen>
                             'Welcome to PATH',
                             textAlign: TextAlign.left,
                             style: TextStyle(
-                              color: Color.fromARGB(255, 255, 167, 38),
+                              color: Color(0xff003B73),
                               fontSize: 32,
                               fontFamily: 'inter',
                               fontWeight: FontWeight.w500,
@@ -170,10 +170,10 @@ class _LandingScreenState extends State<LandingScreen>
                         child: Text(
                           'The perfect companion for your public transportation trips!',
                           style: TextStyle(
-                            color: Color.fromARGB(255, 255, 167, 38),
+                            color: Color(0xff003B73),
                             fontSize: 18,
                             fontFamily: 'inter',
-                            fontWeight: FontWeight.w400,
+                            fontWeight: FontWeight.w800,
                           ),
                         ),
                       ),
